@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import * as T from './textures.js';
+import { mergeChildren } from './merge.js';
 
 export const C = 3;      // cell size (m)
 export const H = 3.2;    // ceiling height (m)
@@ -55,15 +56,19 @@ export function buildWorld(scene, fi, F) {
     blood: new THREE.MeshStandardMaterial({ map: tx.blood, transparent: true, roughness: 0.25, metalness: 0.1, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }),
   };
   world.materials = M;
+  for (const m of [M.wall, M.floor]) m.userData.bump = m.bumpMap;
 
-  // static geometry batches, merged per material at the end
-  const batches = new Map();
+  // static geometry batches, merged per material and per map chunk at the end. Chunks let
+  // three.js frustum-cull (and depth-sort) the parts of the floor you cannot see.
+  const batches = new Map(), CHUNK = C * 10;
   const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _s = new THREE.Vector3(1, 1, 1), _p = new THREE.Vector3();
   function add(geo, mat, x, y, z, ry = 0, rx = 0, rz = 0, sx = 1, sy = 1, sz = 1) {
     _e.set(rx, ry, rz); _q.setFromEuler(_e); _p.set(x, y, z); _s.set(sx, sy, sz); _m.compose(_p, _q, _s);
     const g = geo.clone().applyMatrix4(_m);
-    if (!batches.has(mat)) batches.set(mat, []);
-    batches.get(mat).push(g.index ? g.toNonIndexed() : g);
+    const k = Math.floor(x / CHUNK) + ',' + Math.floor(z / CHUNK);
+    let byChunk = batches.get(mat); if (!byChunk) batches.set(mat, byChunk = new Map());
+    if (!byChunk.has(k)) byChunk.set(k, []);
+    byChunk.get(k).push(g.index ? g.toNonIndexed() : g);
   }
   const G = {
     box: new THREE.BoxGeometry(1, 1, 1), cyl: new THREE.CylinderGeometry(1, 1, 1, 14), cyl6: new THREE.CylinderGeometry(1, 1, 1, 8),
@@ -79,9 +84,15 @@ export function buildWorld(scene, fi, F) {
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) { const c = at(x + dx, z + dz); if (c !== '#' && !(x + dx < 0 || z + dz < 0 || x + dx >= W || z + dz >= D)) edge = true; }
     if (edge) wallCells.push([x, z]);
   }
-  const walls = new THREE.InstancedMesh(new THREE.BoxGeometry(C, H, C), M.wall, wallCells.length);
-  wallCells.forEach(([x, z], i) => { _m.makeTranslation(cx(x), H / 2, cx(z)); walls.setMatrixAt(i, _m); });
-  walls.castShadow = true; walls.receiveShadow = true; group.add(walls);
+  // only the wall faces that border open floor (no tops, no faces buried between blocks)
+  const wallFace = new THREE.PlaneGeometry(C, H);
+  for (const [x, z] of wallCells) {
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, nz = z + dz;
+      if (nx < 0 || nz < 0 || nx >= W || nz >= D || at(nx, nz) === '#') continue;
+      add(wallFace, M.wall, cx(x) + dx * C / 2, H / 2, cx(z) + dz * C / 2, Math.atan2(dx, dz));
+    }
+  }
 
   // floor + ceiling
   tx.floor.repeat.set(W / 2, D / 2); tx.ceil.repeat.set(W, D);
@@ -119,7 +130,7 @@ export function buildWorld(scene, fi, F) {
     else if (c === '*') world.waveSpots.push({ x: X, z: Z });
     else if (c === 'c') {
       const h = 0.95, s = 1.7, ry = (rnd() - 0.5) * 0.3;
-      const m = new THREE.Mesh(G.box, M.crate); m.scale.set(s, h, s); m.position.set(X, h / 2, Z); m.rotation.y = ry; m.castShadow = m.receiveShadow = true; group.add(m);
+      add(G.box, M.crate, X, h / 2, Z, ry, 0, 0, s, h, s);
       world.obst.set(x + ',' + z, { x0: X - s / 2, x1: X + s / 2, z0: Z - s / 2, z1: Z + s / 2, h });
     } else if (c === 't') {
       const along = floorAt(x - 1, z) && floorAt(x + 1, z) ? 0 : Math.PI / 2;
@@ -175,15 +186,18 @@ export function buildWorld(scene, fi, F) {
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       if (!floorAt(x + dx, z + dz) || '123dX'.includes(at(x + dx, z + dz))) continue;
       const [t, col] = signs[i % signs.length];
-      const s = new THREE.Mesh(G.plane, new THREE.MeshStandardMaterial({ map: T.signTex(t, col), roughness: 0.6, emissive: 0xffffff, emissiveMap: T.signTex(t, col), emissiveIntensity: 0.06 }));
+      const st = T.signTex(t, col);
+      const s = new THREE.Mesh(G.plane, new THREE.MeshStandardMaterial({ map: st, roughness: 0.6, emissive: 0xffffff, emissiveMap: st, emissiveIntensity: 0.06 }));
       s.scale.set(1.4, 0.35, 1); s.position.set(cx(x) + dx * (C / 2 + 0.01), 2.1, cx(z) + dz * (C / 2 + 0.01)); s.rotation.y = Math.atan2(dx, dz); group.add(s); break;
     }
   }
 
   // merge batches
-  for (const [mat, list] of batches) {
+  // (wall faces are one-sided quads seen from the lit side, so they would add nothing to the
+  // flashlight's shadow map: skip them there)
+  for (const [mat, byChunk] of batches) for (const list of byChunk.values()) {
     const mesh = new THREE.Mesh(mergeGeometries(list, false), mat);
-    mesh.castShadow = !mat.transparent; mesh.receiveShadow = true; group.add(mesh);
+    mesh.castShadow = !mat.transparent && mat !== M.wall; mesh.receiveShadow = true; group.add(mesh);
   }
 
   // ---------- queries ----------
@@ -298,10 +312,12 @@ function buildDoor(world, x, z, c) {
   const lightMat = new THREE.MeshStandardMaterial({ color: 0x111111, emissive: keyed ? KEYCOL[keyed] : 0x33ff66, emissiveIntensity: 2 });
   for (const sd of [-1, 1]) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.05), lightMat); l.position.set(0, H - 0.42, sd * 0.27); g.add(l); }
   // keypad panel beside the door (on the wall)
+  const padMat = keyed && new THREE.MeshStandardMaterial({ color: 0x0a0a0a, emissive: KEYCOL[keyed], emissiveIntensity: 0.5 });
   if (keyed) for (const sd of [-1, 1]) {
-    const k = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.32, 0.06), new THREE.MeshStandardMaterial({ color: 0x0a0a0a, emissive: KEYCOL[keyed], emissiveIntensity: 0.5 }));
+    const k = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.32, 0.06), padMat);
     k.position.set(C / 2 + 0.35, 1.3, sd * (C / 2 + 0.035)); g.add(k);
   }
+  mergeChildren(g, new Set(halves));
   const t = 0.3;
   const slab = ns ? { x0: X - C / 2, x1: X + C / 2, z0: Z - t, z1: Z + t, h: 99 } : { x0: X - t, x1: X + t, z0: Z - C / 2, z1: Z + C / 2, h: 99 };
   return { cx: x, cz: z, x: X, z: Z, key: keyed || null, locked: !!keyed, open: 0, target: 0, halves, lightMat, slab, g, ns, denyT: 0 };
@@ -326,6 +342,7 @@ function buildLift(world, x, z) {
   for (const s of [-1, 1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(C / 2, H, 0.2), mat); p.position.set(s * C / 4, H / 2, C / 2 - 0.1); p.castShadow = true; g.add(p); halves.push(p); }
   const ind = new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0xff3322, emissiveIntensity: 2 });
   const il = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.14, 0.05), ind); il.position.set(0, H - 0.25, C / 2 + 0.03); g.add(il);
+  mergeChildren(g, new Set(halves));
   world.fixtures.push({ pos: new THREE.Vector3(X, H - 0.6, Z), color: 0xffe0b0, kind: 'lift', mat: lamp.material, base: 4, ph: 0, on: 1, dark: 0 });
   return { cx: x, cz: z, x: X, z: Z, fx, fz, front: { x: X + fx * C, z: Z + fz * C }, open: false, amt: 0, halves, ind };
 }

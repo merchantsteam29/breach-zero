@@ -22,9 +22,12 @@ export class FX {
     this.glow = mk(THREE.AdditiveBlending);   // sparks, acid
     this.gore = mk(THREE.NormalBlending);      // blood
     this.gore.p.material.size = 0.07;
-    this.decals = []; this.holeMat = new THREE.MeshBasicMaterial({ map: holeTex(), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
+    this.holeMat = new THREE.MeshBasicMaterial({ map: holeTex(), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
     this.bloodMat = new THREE.MeshStandardMaterial({ map: bloodTex(), transparent: true, depthWrite: false, roughness: 0.2, polygonOffset: true, polygonOffsetFactor: -3 });
     this.plane = new THREE.PlaneGeometry(1, 1);
+    // decals are two instanced ring buffers: one draw call each however many there are
+    const ring = (mat, n) => { const m = new THREE.InstancedMesh(this.plane, mat, n); m.count = 0; m.visible = false; m.frustumCulled = false; scene.add(m); return { m, n, i: 0 }; };
+    this.holes = ring(this.holeMat, 90); this.bloods = ring(this.bloodMat, 60); this._o = new THREE.Object3D(); this._t = new THREE.Vector3();
     // dust motes in the flashlight
     const dg = new THREE.BufferGeometry(), dp = new Float32Array(260 * 3);
     dg.setAttribute('position', new THREE.BufferAttribute(dp, 3));
@@ -44,18 +47,19 @@ export class FX {
       const p = { pos: pos.clone(), vel: v, life: life * (0.5 + Math.random() * 0.7), max: life, col, grav, slot: sys.i };
       sys.parts[sys.i] = p; sys.i = (sys.i + 1) % N;
     }
+    sys.idle = false; sys.p.visible = true;
   }
   sparks(pos, normal) { this.emit(this.glow, pos, 10, { col: [1, 0.75, 0.35], speed: 5, spread: 0.7, dir: normal, life: 0.35, grav: 12 }); this.emit(this.gore, pos, 6, { col: [0.25, 0.25, 0.24], speed: 1.2, spread: 0.6, dir: normal, life: 0.8, grav: 3 }); }
   blood(pos, dir, n = 14) { this.emit(this.gore, pos, n, { col: [0.32, 0.01, 0.01], speed: 3.5, spread: 0.8, dir: dir.clone().multiplyScalar(0.6), life: 0.8, grav: 11 }); }
   splash(pos, hex) { const c = new THREE.Color(hex); this.emit(this.glow, pos, 18, { col: [c.r, c.g, c.b], speed: 3, spread: 1, life: 0.5, grav: 8 }); }
 
   decal(point, normal, kind = 'hole', size = 0.13) {
-    const m = new THREE.Mesh(this.plane, kind === 'hole' ? this.holeMat : this.bloodMat);
+    const R = kind === 'hole' ? this.holes : this.bloods, m = this._o;
     m.position.copy(point).addScaledVector(normal, 0.01);
-    m.lookAt(point.clone().add(normal)); m.rotateZ(Math.random() * 6.28);
+    m.lookAt(this._t.copy(point).add(normal)); m.rotateZ(Math.random() * 6.28);
     m.scale.setScalar(size * (0.8 + Math.random() * 0.4));
-    this.scene.add(m); this.decals.push(m);
-    if (this.decals.length > 90) this.scene.remove(this.decals.shift());
+    m.updateMatrix(); R.m.setMatrixAt(R.i, m.matrix); R.m.instanceMatrix.needsUpdate = true;
+    R.i = (R.i + 1) % R.n; R.m.count = Math.min(R.n, R.m.count + 1); R.m.visible = true;
   }
   bloodPool(pos, s = 1) { this.decal(new THREE.Vector3(pos.x, 0.005, pos.z), new THREE.Vector3(0, 1, 0), 'blood', 1.6 * s); }
 
@@ -69,17 +73,21 @@ export class FX {
   }
 
   clear() {
-    for (const d of this.decals) this.scene.remove(d); this.decals = [];
+    for (const R of [this.holes, this.bloods]) { R.m.count = 0; R.i = 0; R.m.visible = false; }
     for (const b of this.brass) this.scene.remove(b.m); this.brass = [];
-    for (const s of [this.glow, this.gore]) s.parts = [];
+    for (const s of [this.glow, this.gore]) { s.parts = []; s.idle = false; }
   }
 
   update(dt, cam, flashOn) {
     for (const sys of [this.glow, this.gore]) {
+      // nothing alive: the buffers were already parked out of sight, skip the re-upload
+      if (sys.idle) continue;
       const pa = sys.g.attributes.position.array, ca = sys.g.attributes.color.array;
+      let live = 0;
       for (let i = 0; i < N; i++) {
         const p = sys.parts[i];
         if (!p || p.life <= 0) { pa[i * 3 + 1] = -100; continue; }
+        live++;
         p.life -= dt; p.vel.y -= p.grav * dt; p.pos.addScaledVector(p.vel, dt);
         if (p.pos.y < 0.01) { p.pos.y = 0.01; p.vel.multiplyScalar(0.3); }
         pa[i * 3] = p.pos.x; pa[i * 3 + 1] = p.pos.y; pa[i * 3 + 2] = p.pos.z;
@@ -87,6 +95,7 @@ export class FX {
         ca[i * 3] = p.col[0] * f; ca[i * 3 + 1] = p.col[1] * f; ca[i * 3 + 2] = p.col[2] * f;
       }
       sys.g.attributes.position.needsUpdate = true; sys.g.attributes.color.needsUpdate = true;
+      sys.idle = live === 0; sys.p.visible = !sys.idle;
     }
     for (let i = this.brass.length - 1; i >= 0; i--) {
       const b = this.brass[i]; b.life -= dt;

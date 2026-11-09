@@ -17,7 +17,7 @@ const store = {
 };
 
 // ---------- settings ----------
-const DEF = { sens: 1, fov: 80, bright: 1, vol: 0.8, amb: 0.8, quality: 'medium', invert: false, bob: true, reduceFlash: false };
+const DEF = { sens: 1, fov: 80, bright: 1, vol: 0.8, amb: 0.8, quality: 'medium', invert: false, bob: true, reduceFlash: false, autoRes: true };
 const settings = { ...DEF, ...store.get('bz_settings', {}) };
 const QUAL = {
   low: { pr: 0.75, shadow: 512, lights: 4 },
@@ -33,7 +33,8 @@ renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadow
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.outputColorSpace = THREE.SRGBColorSpace;
 const scene = new THREE.Scene(); scene.background = new THREE.Color(0x000000);
 scene.fog = new THREE.FogExp2(0x000000, 0.08);
-const camera = new THREE.PerspectiveCamera(settings.fov, innerWidth / innerHeight, 0.05, 120);
+// the fog is fully black well before 40 m, so nothing past that needs drawing
+const camera = new THREE.PerspectiveCamera(settings.fov, innerWidth / innerHeight, 0.05, 40);
 const vmScene = new THREE.Scene(); const vmCam = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.01, 5);
 const hemi = new THREE.HemisphereLight(0x1a2430, 0x050505, 2.6); scene.add(hemi);
 
@@ -46,11 +47,17 @@ G.player = new Player(G);
 G.enemies = new Enemies(G);
 G.shake = (a) => { G.player.trauma = Math.min(1, G.player.trauma + a); };
 
-let post = null, pool = [];
+let post = null, pool = [], dynScale = 1;
+// render resolution = quality's pixel ratio x dynScale (auto-lowered when the frame rate drops)
+function sizeRenderer() {
+  const q = QUAL[settings.quality] || QUAL.medium;
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1) * q.pr * dynScale);
+  renderer.setSize(innerWidth, innerHeight, false);
+  if (post) { post.comp.setPixelRatio(renderer.getPixelRatio()); post.comp.setSize(innerWidth, innerHeight); }
+}
 function applyQuality() {
   const q = QUAL[settings.quality] || QUAL.medium;
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 1) * q.pr);
-  renderer.setSize(innerWidth, innerHeight, false);
+  dynScale = 1; sizeRenderer(); applyBump();
   G.player.setShadowRes(q.shadow);
   for (const l of pool) scene.remove(l);
   pool = [];
@@ -59,6 +66,21 @@ function applyQuality() {
   post = makeComposer(renderer, scene, camera, vmScene, vmCam, settings.quality);
   post.comp.setPixelRatio(renderer.getPixelRatio()); post.comp.setSize(innerWidth, innerHeight);
 }
+// bump-mapped walls/floors cost ~25% of the frame on their own: Low quality goes without
+function applyBump() {
+  const on = settings.quality !== 'low', M = G.world?.materials; if (!M) return;
+  for (const m of [M.wall, M.floor]) { const want = on ? m.userData.bump : null; if (m.bumpMap !== want) { m.bumpMap = want; m.needsUpdate = true; } }
+}
+// Below ~45 fps for 2 s, drop the render resolution a step (to 55% at most); above ~57 fps
+// for 6 s, step it back up. Keeps weak GPUs playable without touching the settings.
+let slowT = 0, fastT = 0;
+function autoResolution(rawDt) {
+  if (!settings.autoRes && dynScale !== 1) { dynScale = 1; sizeRenderer(); }
+  if (TEST || !settings.autoRes || G.state !== 'play' || rawDt > 0.25) { slowT = fastT = 0; return; }
+  if (fpsAvg < 45) { slowT += rawDt; fastT = 0; } else if (fpsAvg > 57) { fastT += rawDt; slowT = 0; } else slowT = fastT = 0;
+  if (slowT > 2 && dynScale > 0.55) { dynScale = Math.max(0.55, dynScale - 0.15); slowT = 0; sizeRenderer(); }
+  else if (fastT > 6 && dynScale < 1) { dynScale = Math.min(1, dynScale + 0.15); fastT = 0; sizeRenderer(); }
+}
 function applySettings() {
   renderer.toneMappingExposure = settings.bright * 1.2;
   A.setVolumes({ master: settings.vol, amb: settings.amb, mus: settings.amb });
@@ -66,7 +88,7 @@ function applySettings() {
 }
 addEventListener('resize', () => {
   camera.aspect = vmCam.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); vmCam.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight, false); post.comp.setSize(innerWidth, innerHeight);
+  sizeRenderer();
 });
 
 // ---------- input ----------
@@ -113,6 +135,9 @@ $('clickPlay').addEventListener('click', () => lock());
 const ui = {
   cache: {},
   set(id, v, prop = 'textContent') { const k = id + prop; if (this.cache[k] === v) return; this.cache[k] = v; $(id)[prop] = v; },
+  // style / class writes only when the value changes (they dirty the page's style every frame otherwise)
+  style(id, p, v) { const k = id + '|' + p; if (this.cache[k] === v) return; this.cache[k] = v; if (p.startsWith('--')) $(id).style.setProperty(p, v); else $(id).style[p] = v; },
+  cls(el, c, on) { if (el.classList.contains(c) !== on) el.classList.toggle(c, on); },
   hitmarker(kill, head) {
     const h = $('hitmark'); h.className = 'hitmark show' + (kill ? ' kill' : '');
     clearTimeout(this.hmT); this.hmT = setTimeout(() => (h.className = 'hitmark' + (kill ? ' kill' : '')), kill ? 220 : 90);
@@ -148,7 +173,7 @@ function loadFloor(fi, { menu = false } = {}) {
   disposeWorld(); G.enemies.clear(); G.fx.clear();
   const F = FLOORS[fi];
   G.floor = fi; G.keys = new Set(); G.powerOn = false; G.finale = null; G.liftArrived = false; G.blackout = 0;
-  G.world = buildWorld(scene, fi, F);
+  G.world = buildWorld(scene, fi, F); applyBump();
   scene.fog.density = F.fog; hemi.color.setHex(F.ambient);
   const W = G.world;
   for (const s of W.spawns) {
@@ -496,21 +521,21 @@ function hud() {
   ui.set('hObj', step.text);
   const keys = [...G.keys].map((k) => `<i style="color:${{ b: '#3b82f6', r: '#ef4444', y: '#facc15' }[k]}" title="${KEYNAME[k]}"></i>`).join('');
   ui.set('hKeys', keys, 'innerHTML');
-  $('hHp').style.width = Math.max(0, P.hp) + '%'; $('hSt').style.width = P.stamina + '%'; $('hBt').style.width = P.battery + '%';
+  ui.style('hHp', 'width', Math.max(0, P.hp).toFixed(1) + '%'); ui.style('hSt', 'width', P.stamina.toFixed(1) + '%'); ui.style('hBt', 'width', P.battery.toFixed(1) + '%');
   ui.set('hHpN', String(Math.ceil(P.hp)));
-  $('hHp').parentElement.parentElement.classList.toggle('low', P.hp < 35);
-  $('hBt').parentElement.parentElement.classList.toggle('low', P.battery < 22);
+  ui.cls($('hHp').parentElement.parentElement, 'low', P.hp < 35);
+  ui.cls($('hBt').parentElement.parentElement, 'low', P.battery < 22);
   ui.set('hMed', `MEDKITS ${P.medkits} <small>[Q]</small>`, 'innerHTML');
   const a = P.ammo[P.weapon];
   ui.set('hWeap', P.weapon === 'pistol' ? 'PISTOL' + (P.hasShotgun ? '  ·  [2] SHOTGUN' : '') : 'SHOTGUN  ·  [1] PISTOL');
   ui.set('hMag', String(a.mag)); ui.set('hRes', String(a.reserve));
-  $('hMag').parentElement.classList.toggle('empty', a.mag === 0);
+  ui.cls($('hMag').parentElement, 'empty', a.mag === 0);
   ui.set('hRel', P.reloadT > 0 ? 'RELOADING' : a.mag === 0 && a.reserve === 0 ? 'NO AMMO' : a.mag <= (P.weapon === 'pistol' ? 3 : 1) && a.reserve > 0 ? '[R] RELOAD' : P.flashDead ? 'LIGHT RECHARGING' : '');
   // crosshair spread
   const moving = Math.hypot(P.vel.x, P.vel.z);
   const gap = (P.weapon === 'shotgun' ? 16 : 5) * (1 - P.ads * 0.6) + moving * 1.4 + P.kickV * 8 + (P.onGround ? 0 : 8);
-  $('cross').style.setProperty('--g', gap.toFixed(1) + 'px');
-  $('cross').style.opacity = P.sprinting || P.reloadT > 0 || !P.alive ? 0.25 : 1;
+  ui.style('cross', '--g', gap.toFixed(1) + 'px');
+  ui.style('cross', 'opacity', P.sprinting || P.reloadT > 0 || !P.alive ? '0.25' : '1');
   // prompt
   let pr = '', bad = false;
   const u = nearestUse();
@@ -519,8 +544,8 @@ function hud() {
   else if (u?.kind === 'power') { if (G.keys.has('y')) pr = '[E] Pull the main breaker'; else { pr = 'Breaker locked: YELLOW keycard'; bad = true; } }
   else if (u?.kind === 'lift') { pr = G.floor === 2 ? 'FREIGHT LIFT: NO POWER' : 'LIFT'; bad = true; }
   else if (G.lockedNear && G.lockedNear.locked) { pr = `${KEYNAME[G.lockedNear.key]} KEYCARD REQUIRED`; bad = true; }
-  const pe = $('hPrompt'); ui.set('hPrompt', pr); pe.classList.toggle('show', !!pr); pe.classList.toggle('bad', bad);
-  if (!G.finale) $('hTimer').hidden = true;
+  const pe = $('hPrompt'); ui.set('hPrompt', pr); ui.cls(pe, 'show', !!pr); ui.cls(pe, 'bad', bad);
+  if (!G.finale && !$('hTimer').hidden) $('hTimer').hidden = true;
 }
 
 // ---------- post uniforms ----------
@@ -541,6 +566,7 @@ function frame() {
   requestAnimationFrame(frame);
   const rawDt = clock.getDelta(), dt = Math.min(rawDt, 0.05), t = clock.elapsedTime;
   fpsAvg = fpsAvg * 0.95 + (1 / Math.max(rawDt, 1e-3)) * 0.05;
+  autoResolution(rawDt);
   if (!G.world) return;
   const P = G.player;
   if (G.state === 'play' || G.state === 'transition') {
@@ -605,7 +631,7 @@ function openSettings() {
   bind('sVol', 'vol', 'oVol', (v) => Math.round(v * 100) + '%');
   bind('sAmb', 'amb', 'oAmb', (v) => Math.round(v * 100) + '%');
   const q = $('sQual'); q.value = settings.quality; q.onchange = () => { settings.quality = q.value; store.set('bz_settings', settings); applyQuality(); };
-  for (const [id, key] of [['sInvert', 'invert'], ['sBob', 'bob'], ['sFlash', 'reduceFlash']]) {
+  for (const [id, key] of [['sInvert', 'invert'], ['sBob', 'bob'], ['sFlash', 'reduceFlash'], ['sAutoRes', 'autoRes']]) {
     const c = $(id); c.checked = settings[key]; c.onchange = () => { settings[key] = c.checked; store.set('bz_settings', settings); };
   }
   show('sSettings');

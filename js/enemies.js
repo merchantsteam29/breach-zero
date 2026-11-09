@@ -1,5 +1,6 @@
 // Monsters: code-built bodies with procedural animation, plus their AI.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import * as A from './audio.js';
 import { fleshTex } from './textures.js';
 import { C, H } from './world.js';
@@ -116,7 +117,48 @@ function crawlerModel() {
   return { root, body, hips, torso, neck, head, jaw, legs, arms: [], crawler: true, s: 1, hipY: 0.45, hits };
 }
 
-function build(type) {
+// A freshly built body is ~50 tiny meshes (each its own draw call, twice over with the
+// flashlight shadow). Merge every pivot's direct mesh children by material into one mesh:
+// the pivots stay, so the procedural animation is untouched. The merged geometry is cached
+// per type, so later spawns of that type reuse it instead of uploading new buffers.
+const GEO = new Map();
+const NO_SHADOW = new Set(['eye', 'mouth', 'bloom', 'sac', 'acid']);
+function compact(m, type) {
+  const M = mats(), matName = new Map(Object.entries(M).map(([k, v]) => [v, k]));
+  const refs = new Map(m.hits.map((h) => [h.o, null]));
+  const keep = new Set([m.sac].filter(Boolean));
+  const nodes = []; m.root.traverse((o) => { if (!o.isMesh) nodes.push(o); });
+  nodes.forEach((node, ni) => {
+    const byMat = new Map();
+    for (const c of node.children) {
+      if (!c.isMesh || keep.has(c)) continue;
+      if (!byMat.has(c.material)) byMat.set(c.material, []);
+      byMat.get(c.material).push(c);
+    }
+    for (const [mat, list] of byMat) {
+      const key = type + '/' + ni + '/' + matName.get(mat);
+      let geo = GEO.get(key);
+      if (!geo) {
+        geo = mergeGeometries(list.map((c) => { c.updateMatrix(); return c.geometry.clone().applyMatrix4(c.matrix); }), false);
+        geo.computeBoundingSphere(); GEO.set(key, geo);
+      }
+      for (const c of list) {
+        node.remove(c);
+        // hit spheres follow these parts, so leave an empty marker where they were
+        if (refs.has(c)) { const k = new THREE.Object3D(); k.position.copy(c.position); k.quaternion.copy(c.quaternion); k.scale.copy(c.scale); node.add(k); refs.set(c, k); }
+      }
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.castShadow = !NO_SHADOW.has(matName.get(mat));
+      node.add(mesh);
+    }
+  });
+  if (m.sac) { const key = type + '/sac', g = GEO.get(key); if (g) m.sac.geometry = g; else GEO.set(key, m.sac.geometry); m.sac.castShadow = false; }
+  for (const h of m.hits) h.o = refs.get(h.o) || h.o;
+  return m;
+}
+
+function build(type) { return compact(buildRaw(type), type); }
+function buildRaw(type) {
   if (type === 'crawler') return crawlerModel();
   if (type === 'brute') return humanoid({ scale: 1.4, leg: 0.42, limbR: 0.1, tw: 0.7, th: 0.62, arm: 0.48, headR: 0.14, neck: 0.04, bigArm: true, bulk: true, growths: 10, legMat: mats().skinDark });
   if (type === 'spitter') return humanoid({ leg: 0.46, limbR: 0.048, tw: 0.38, th: 0.48, arm: 0.38, headR: 0.13, neck: 0.3, sac: true, growths: 2 });
@@ -125,6 +167,7 @@ function build(type) {
 
 // ---------------------------------------------------------------------------
 const _v = new THREE.Vector3(), _w = new THREE.Vector3();
+let SPIT_GEO = null;
 
 export class Enemies {
   constructor(G) { this.G = G; this.list = []; this.shots = []; this.shriekT = 0; this.group = new THREE.Group(); G.scene.add(this.group); }
@@ -222,6 +265,7 @@ export class Enemies {
       if (e.state === 'dormant') continue;
       // falling (ceiling drops / pounces)
       if (e.y > 0 || e.vy > 0) { e.vy -= 20 * dt; e.y = Math.max(0, e.y + e.vy * dt); if (e.y === 0) { e.vy = 0; A.step('brute', e.pos.clone()); } }
+      if (e.gone) continue;
       if (e.state === 'dead') { this.animDead(e, dt); continue; }
       const dx = pp.x - e.pos.x, dz = pp.z - e.pos.z, dist = Math.hypot(dx, dz);
       e.cd -= dt; e.specialCd -= dt; e.flinch = Math.max(0, e.flinch - dt * 4); e.stagger -= dt; e.twitch = Math.max(0, e.twitch - dt);
@@ -375,7 +419,7 @@ export class Enemies {
     const target = P.pos.clone(); target.y += 1.2; target.addScaledVector(P.vel, 0.35);
     const d = target.sub(o); const t = d.length() / 15;
     const vel = d.divideScalar(t); vel.y += 3 * t;
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), M.acid); mesh.position.copy(o); this.group.add(mesh);
+    const mesh = new THREE.Mesh(SPIT_GEO || (SPIT_GEO = new THREE.SphereGeometry(0.12, 8, 6)), M.acid); mesh.position.copy(o); this.group.add(mesh);
     this.shots.push({ mesh, vel, life: 3, from: e.pos.clone() });
     A.spit(o);
   }
@@ -457,6 +501,6 @@ export class Enemies {
     }
     if (e.deadT > 0.55 && !e.pooled) { e.pooled = true; this.G.fx.bloodPool(e.pos, e.type === 'brute' ? 1.6 : 1); }
     if (e.deadT > 9) { m.root.position.y -= dt * 0.15; }
-    if (e.deadT > 13) { m.root.visible = false; e.gone = true; }
+    if (e.deadT > 13 && !e.gone) { m.root.visible = false; e.gone = true; this.group.remove(m.root); }
   }
 }

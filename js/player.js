@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import * as A from './audio.js';
 import { flashTex } from './textures.js';
+import { mergeChildren } from './merge.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 const WEAPONS = {
@@ -108,6 +109,8 @@ export class Player {
     fist(pumpG, -0.004, -0.05, -0.3);
     limb(pumpG, [-0.01, -0.07, -0.29], [-0.17, -0.27, -0.02], 0.032, 0.044, sleeve);
     s.userData.tip = new THREE.Vector3(0, 0.012, -0.65);
+    // fewer draw calls: fold the static parts of each gun together (the slide, mag and pump still move)
+    mergeChildren(slide); mergeChildren(p, new Set([this.pistolMag])); mergeChildren(s);
     // muzzle flash sprite
     this.flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: flashTex(), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0 }));
     this.flash.scale.setScalar(0.16); S.add(this.flash);
