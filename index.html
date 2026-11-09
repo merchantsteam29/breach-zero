@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BREACH: ZERO</title>
+<meta name="description" content="A fast, dark first-person horror shooter. You are trapped three floors under Ardent Biolabs after a containment breach. Find keycards, fight what the lab made, and get to the surface lift.">
+<link rel="icon" href="favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=JetBrains+Mono:wght@400;700&display=swap">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- HUD -->
+<div id="hud" hidden>
+  <div class="cross" id="cross"><i></i><i></i><i></i><i></i></div>
+  <div class="hitmark" id="hitmark"></div>
+  <div class="hud-tl">
+    <div class="floorname" id="hFloor">SUBLEVEL 3</div>
+    <div class="obj" id="hObj">Find a BLUE keycard</div>
+    <div class="keys" id="hKeys"></div>
+  </div>
+  <div class="hud-bl">
+    <div class="bar hp"><label>HEALTH</label><div><b id="hHp"></b></div><span id="hHpN">100</span></div>
+    <div class="bar st"><label>STAMINA</label><div><b id="hSt"></b></div></div>
+    <div class="bar bt"><label>LIGHT</label><div><b id="hBt"></b></div></div>
+    <div class="med" id="hMed">MEDKITS 1 <small>[Q]</small></div>
+  </div>
+  <div class="hud-br">
+    <div class="wname" id="hWeap">PISTOL</div>
+    <div class="ammo"><span id="hMag">12</span><small>/ <span id="hRes">36</span></small></div>
+    <div class="hint" id="hRel"></div>
+  </div>
+  <div class="prompt" id="hPrompt"></div>
+  <div class="toast" id="hToast"></div>
+  <div class="timer" id="hTimer" hidden></div>
+  <div class="dmgdirs" id="dmgdirs"></div>
+  <div class="log" id="hLog" hidden><div class="from" id="hLogFrom"></div><p id="hLogText"></p><small>[E] close</small></div>
+</div>
+
+<!-- title -->
+<div class="screen" id="sTitle">
+  <div class="title-wrap">
+    <div class="brand">ARDENT BIOLABS · SITE ZERO</div>
+    <h1>BREACH<span>:</span> ZERO</h1>
+    <p class="tag">Three floors down. The lights are failing. Something is breathing in the vents.</p>
+    <div class="menu">
+      <button id="bContinue" hidden>Continue <small id="contInfo"></small></button>
+      <button id="bNew" class="primary">New game</button>
+      <button id="bSettings">Settings</button>
+      <button id="bControls">Controls</button>
+    </div>
+    <p class="foot">Headphones recommended · Keyboard &amp; mouse</p>
+  </div>
+</div>
+
+<div class="screen" id="sDiff" hidden>
+  <div class="panel">
+    <h2>Choose difficulty</h2>
+    <div class="diffs">
+      <button data-diff="easy"><b>Easy</b><span>Monsters hit softer. More ammo lying around.</span></button>
+      <button data-diff="normal" class="primary"><b>Normal</b><span>Scarce ammo. Every shot counts.</span></button>
+      <button data-diff="nightmare"><b>Nightmare</b><span>Faster, tougher, hungrier. Ammo is rare.</span></button>
+    </div>
+    <button class="back" data-back>Back</button>
+  </div>
+</div>
+
+<div class="screen" id="sControls" hidden>
+  <div class="panel">
+    <h2>Controls</h2>
+    <table class="keys-table">
+      <tr><td>W A S D</td><td>Move</td></tr>
+      <tr><td>Mouse</td><td>Look</td></tr>
+      <tr><td>Left click</td><td>Shoot</td></tr>
+      <tr><td>Right click</td><td>Aim down sights</td></tr>
+      <tr><td>Shift</td><td>Sprint (uses stamina, loud)</td></tr>
+      <tr><td>Space</td><td>Jump (climb onto crates)</td></tr>
+      <tr><td>C</td><td>Crouch (quiet, harder to spot)</td></tr>
+      <tr><td>R</td><td>Reload</td></tr>
+      <tr><td>F</td><td>Flashlight (recharges while off)</td></tr>
+      <tr><td>E</td><td>Use: audio logs, switches, lifts</td></tr>
+      <tr><td>Q</td><td>Use a medkit</td></tr>
+      <tr><td>1 / 2 / wheel</td><td>Pistol / shotgun</td></tr>
+      <tr><td>Esc</td><td>Pause</td></tr>
+    </table>
+    <p class="tip">Monsters hunt by sound and light. Gunshots carry through the corridors. Your flashlight beam gives you away.</p>
+    <button class="back" data-back>Back</button>
+  </div>
+</div>
+
+<div class="screen" id="sSettings" hidden>
+  <div class="panel">
+    <h2>Settings</h2>
+    <div class="settings">
+      <label>Mouse sensitivity <output id="oSens"></output><input type="range" id="sSens" min="0.2" max="3" step="0.05"></label>
+      <label>Field of view <output id="oFov"></output><input type="range" id="sFov" min="60" max="110" step="1"></label>
+      <label>Brightness <output id="oBright"></output><input type="range" id="sBright" min="0.6" max="2" step="0.05"></label>
+      <label>Master volume <output id="oVol"></output><input type="range" id="sVol" min="0" max="1" step="0.05"></label>
+      <label>Ambience &amp; music <output id="oAmb"></output><input type="range" id="sAmb" min="0" max="1" step="0.05"></label>
+      <label class="row">Graphics
+        <select id="sQual"><option value="low">Low (fastest)</option><option value="medium">Medium</option><option value="high">High</option></select></label>
+      <label class="row chk"><input type="checkbox" id="sInvert"> Invert mouse Y</label>
+      <label class="row chk"><input type="checkbox" id="sBob"> Head bob</label>
+      <label class="row chk"><input type="checkbox" id="sFlash"> Reduce flashing &amp; shake</label>
+    </div>
+    <p class="warn" id="gpuWarn" hidden>Chrome is drawing this game without your graphics card (software rendering). Turn on "Use graphics acceleration when available" in Chrome settings, or set Graphics to Low.</p>
+    <button class="back" data-back>Done</button>
+  </div>
+</div>
+
+<div class="screen dim" id="sPause" hidden>
+  <div class="panel narrow">
+    <h2>Paused</h2>
+    <div class="pstats" id="pStats"></div>
+    <div class="menu">
+      <button id="bResume" class="primary">Resume</button>
+      <button id="bPSettings">Settings</button>
+      <button id="bPControls">Controls</button>
+      <button id="bRestartFloor">Restart floor</button>
+      <button id="bQuit">Quit to title</button>
+    </div>
+  </div>
+</div>
+
+<div class="screen dim red" id="sDead" hidden>
+  <div class="panel narrow center">
+    <h2 class="big">YOU DIED</h2>
+    <p id="deadMsg">The lab keeps what it kills.</p>
+    <div class="menu">
+      <button id="bRetry" class="primary">Retry floor</button>
+      <button id="bDeadQuit">Quit to title</button>
+    </div>
+  </div>
+</div>
+
+<div class="screen" id="sWin" hidden>
+  <div class="panel narrow center">
+    <h2 class="big green">YOU ESCAPED</h2>
+    <p>The freight lift climbs toward daylight. Below you, something screams up the shaft, and then the doors seal.</p>
+    <div class="pstats" id="winStats"></div>
+    <div class="menu"><button id="bWinMenu" class="primary">Back to title</button></div>
+  </div>
+</div>
+
+<div class="card" id="floorCard" hidden><small id="fcNum"></small><b id="fcName"></b><span id="fcSub"></span></div>
+<div class="fade" id="fade"></div>
+<div class="clicktoplay" id="clickPlay" hidden>Click to continue</div>
+<div class="loading" id="loading">Loading…</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
