@@ -48,7 +48,7 @@ export class Player {
     this.light = L;
     // a weak fill so the area right around you is never pure black when the light is on
     this.fill = new THREE.PointLight(0xffe8d0, 0.6, 6, 2); G.scene.add(this.fill);
-    this.muzzle = new THREE.PointLight(0xffb060, 0, 14, 2); G.scene.add(this.muzzle);
+    this.muzzle = this.fill; // one light does both jobs: every extra light is paid for on every pixel
   }
   setShadowRes(n) { this.light.shadow.mapSize.set(n, n); if (this.light.shadow.map) { this.light.shadow.map.dispose(); this.light.shadow.map = null; } }
 
@@ -295,7 +295,7 @@ export class Player {
     this.light.target.position.copy(cam.position).addScaledVector(this.lightDir, 10);
     this.aimDist = THREE.MathUtils.damp(this.aimDist || 6, G.world ? Math.min(G.world.raycast(cam.position, this.fwd, 12).dist, G.enemies.hitTest(cam.position, this.fwd, 12)?.dist ?? 12) : 6, 10, dt);
     const near = THREE.MathUtils.clamp(Math.pow((this.aimDist + 0.7) / 6.7, 1.6), 0.08, 1);
-    this.light.intensity = 260 * fl * near; this.fill.intensity = 1.6 * fl; this.fill.position.copy(cam.position);
+    this.light.intensity = 260 * fl * near; this.fillBase = 1.6 * fl;
     this.vmLight.intensity = 0.6 * fl;
     this.light.visible = true;
 
@@ -303,8 +303,10 @@ export class Player {
     this.fireCd -= dt; this.switchT = Math.max(0, this.switchT - dt); this.holdT = (this.holdT || 0) + dt;
     if (this.muzzleT > 0) this.muzzleT -= dt;
     const mz2 = this.muzzleT > 0 ? 1 : 0;
-    this.muzzle.intensity = mz2 * (this.weapon === 'shotgun' ? 70 : 40) * (S.reduceFlash ? 0.3 : 1);
-    this.muzzle.position.copy(cam.position).addScaledVector(this.fwd, 0.8);
+    // the fill light doubles as the muzzle flash: orange, brighter and a little ahead while firing
+    const F = this.fill;
+    if (mz2) { F.color.setHex(0xffb060); F.intensity = (this.weapon === 'shotgun' ? 70 : 40) * (S.reduceFlash ? 0.3 : 1); F.distance = 14; F.position.copy(cam.position).addScaledVector(this.fwd, 0.8); }
+    else { F.color.setHex(0xffe8d0); F.intensity = this.fillBase; F.distance = 6; F.position.copy(cam.position); }
     this.vmMuzzle.intensity = mz2 * 1.5;
     if ((I.lmb || I.lmbEdge) && G.state === 'play') this.tryFire(I.lmbEdge); I.lmbEdge = false;
     // reload progress

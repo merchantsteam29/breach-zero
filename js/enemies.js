@@ -413,6 +413,13 @@ export class Enemies {
     }
   }
 
+  // one throwaway mesh per monster material, for shader warm-up
+  warmGroup() {
+    const g = new THREE.Group(), geo = SPIT_GEO || (SPIT_GEO = new THREE.SphereGeometry(0.12, 8, 6));
+    for (const m of Object.values(mats())) { const o = new THREE.Mesh(geo, m); o.castShadow = true; g.add(o); }
+    return g;
+  }
+
   spit(e) {
     const P = this.G.player, M = mats();
     const o = e.pos.clone(); o.y = e.y + 1.75;

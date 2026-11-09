@@ -4,7 +4,6 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { dotTex, holeTex, bloodTex } from './textures.js';
 
 const N = 900;
@@ -148,6 +147,9 @@ const FinalShader = {
       col += (h(uv * 900.0) - 0.5) * grain;
       col *= 1.0 - fade;
       gl_FragColor = vec4(col, 1.0);
+      // tone mapping + sRGB here instead of a separate OutputPass (one less full-screen pass)
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
     }`,
 };
 
@@ -156,8 +158,13 @@ export function makeComposer(renderer, scene, cam, vmScene, vmCam, quality) {
   comp.addPass(new RenderPass(scene, cam));
   const vm = new RenderPass(vmScene, vmCam); vm.clear = false; vm.clearDepth = true; comp.addPass(vm);
   let bloom = null;
-  if (quality !== 'low') { bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.45, 0.5, 0.85); comp.addPass(bloom); }
+  if (quality !== 'low') {
+    bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.45, 0.5, 0.85);
+    // the glow is a soft blur anyway: run it at a quarter of the screen size instead of half
+    // (the pass halves whatever it is given), which makes it about 4x cheaper
+    const setSize = bloom.setSize.bind(bloom); bloom.setSize = (w, h) => setSize(Math.max(1, w / 2), Math.max(1, h / 2));
+    comp.addPass(bloom);
+  }
   const fin = new ShaderPass(FinalShader); comp.addPass(fin);
-  comp.addPass(new OutputPass());
   return { comp, fin, bloom };
 }

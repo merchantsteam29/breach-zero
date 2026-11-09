@@ -20,9 +20,9 @@ const store = {
 const DEF = { sens: 1, fov: 80, bright: 1, vol: 0.8, amb: 0.8, quality: 'medium', invert: false, bob: true, reduceFlash: false, autoRes: true };
 const settings = { ...DEF, ...store.get('bz_settings', {}) };
 const QUAL = {
-  low: { pr: 0.75, shadow: 512, lights: 4 },
-  medium: { pr: 1, shadow: 1024, lights: 6 },
-  high: { pr: 1.5, shadow: 2048, lights: 8 },
+  low: { pr: 0.75, shadow: 512, lights: 3, maxPx: 1280 * 720 },
+  medium: { pr: 1, shadow: 1024, lights: 5, maxPx: 1920 * 1080 },
+  high: { pr: 1.5, shadow: 2048, lights: 7, maxPx: 2560 * 1440 },
 };
 
 // ---------- renderer ----------
@@ -51,7 +51,9 @@ let post = null, pool = [], dynScale = 1;
 // render resolution = quality's pixel ratio x dynScale (auto-lowered when the frame rate drops)
 function sizeRenderer() {
   const q = QUAL[settings.quality] || QUAL.medium;
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 1) * q.pr * dynScale);
+  // never shade more than the quality's pixel budget, however big the window is (4K screens!)
+  const budget = Math.sqrt(q.maxPx / Math.max(1, innerWidth * innerHeight));
+  renderer.setPixelRatio(Math.min(Math.min(devicePixelRatio, 1) * q.pr, budget) * dynScale);
   renderer.setSize(innerWidth, innerHeight, false);
   if (post) { post.comp.setPixelRatio(renderer.getPixelRatio()); post.comp.setSize(innerWidth, innerHeight); }
 }
@@ -71,14 +73,14 @@ function applyBump() {
   const on = settings.quality !== 'low', M = G.world?.materials; if (!M) return;
   for (const m of [M.wall, M.floor]) { const want = on ? m.userData.bump : null; if (m.bumpMap !== want) { m.bumpMap = want; m.needsUpdate = true; } }
 }
-// Below ~45 fps for 2 s, drop the render resolution a step (to 55% at most); above ~57 fps
+// Below ~50 fps for 1.5 s, drop the render resolution a step (to 50% at most); above ~57 fps
 // for 6 s, step it back up. Keeps weak GPUs playable without touching the settings.
 let slowT = 0, fastT = 0;
 function autoResolution(rawDt) {
   if (!settings.autoRes && dynScale !== 1) { dynScale = 1; sizeRenderer(); }
   if (TEST || !settings.autoRes || G.state !== 'play' || rawDt > 0.25) { slowT = fastT = 0; return; }
-  if (fpsAvg < 45) { slowT += rawDt; fastT = 0; } else if (fpsAvg > 57) { fastT += rawDt; slowT = 0; } else slowT = fastT = 0;
-  if (slowT > 2 && dynScale > 0.55) { dynScale = Math.max(0.55, dynScale - 0.15); slowT = 0; sizeRenderer(); }
+  if (fpsAvg < 50) { slowT += rawDt; fastT = 0; } else if (fpsAvg > 57) { fastT += rawDt; slowT = 0; } else slowT = fastT = 0;
+  if (slowT > 1.5 && dynScale > 0.5) { dynScale = Math.max(0.5, dynScale - 0.15); slowT = 0; sizeRenderer(); }
   else if (fastT > 6 && dynScale < 1) { dynScale = Math.min(1, dynScale + 0.15); fastT = 0; sizeRenderer(); }
 }
 function applySettings() {
@@ -191,6 +193,7 @@ function loadFloor(fi, { menu = false } = {}) {
   P.yaw = bestYaw; P.pitch = 0;
   G.flowCell = null; updateFlow(true);
   G.eventT = 20 + Math.random() * 20; G.dripT = 3;
+  warmShaders();
   if (!menu) { A.startAmbience(fi); showFloorCard(F, fi); }
 }
 
@@ -198,6 +201,16 @@ function showFloorCard(F, fi) {
   const c = $('floorCard'); c.hidden = true; void c.offsetWidth;
   $('fcNum').textContent = `FLOOR ${fi + 1} / ${FLOORS.length}`; $('fcName').textContent = F.name; $('fcSub').textContent = F.sub; c.hidden = false;
   clearTimeout(showFloorCard.t); showFloorCard.t = setTimeout(() => (c.hidden = true), 4600);
+}
+
+// Compile every shader the floor can need up front (hidden ambushers, decals, acid, every
+// monster material) so the first sight of something new doesn't freeze the game for a moment.
+function warmShaders() {
+  const extra = G.enemies.warmGroup(); scene.add(extra);
+  const hidden = []; scene.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
+  try { renderer.compile(scene, camera); renderer.compile(vmScene, vmCam); } catch {}
+  for (const o of hidden) o.visible = false;
+  scene.remove(extra);
 }
 
 // BFS flow field from the player's cell: monsters walk downhill on it
@@ -656,7 +669,7 @@ frame();
 // ---------- test hook ----------
 if (TEST) {
   window.__bz = {
-    G, I, A,
+    G, I, A, post: () => post, pool: () => pool,
     start: (d = 'normal', floor = 0) => { startGame(d); if (floor) { const keep = G.player.save(); loadFloor(floor); G.player.load(keep); G.player.pos.set(G.world.start.x, 0, G.world.start.z); } },
     tp: (cx, cz) => { G.player.pos.set(cx * C + C / 2, 0, cz * C + C / 2); updateFlow(true); },
     look: (yaw, pitch = 0) => { G.player.yaw = yaw; G.player.pitch = pitch; },
