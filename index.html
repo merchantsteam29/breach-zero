@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BREACH: ZERO</title>
-<meta name="description" content="A fast, dark first-person horror shooter. You are trapped three floors under Ardent Biolabs after a containment breach. Find keycards, fight what the lab made, and get to the surface lift.">
+<meta name="description" content="A dark first-person horror shooter. You are trapped five floors under Ardent Biolabs after a containment breach. Find keycards, outrun the Stalker, kill THE HOST, and get to the surface lift.">
 <link rel="icon" href="favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=JetBrains+Mono:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;600&display=swap">
 <link rel="stylesheet" href="style.css">
 <script type="importmap">
 { "imports": {
@@ -19,22 +19,28 @@
 <body>
 <canvas id="game"></canvas>
 
-<!-- HUD -->
+<!-- HUD: a wrist-mounted bio-monitor and a lab terminal readout -->
 <div id="hud" hidden>
   <div class="cross" id="cross"><i></i><i></i><i></i><i></i></div>
   <div class="hitmark" id="hitmark"></div>
   <div class="hud-tl">
-    <div class="floorname" id="hFloor">SUBLEVEL 3</div>
-    <div class="obj" id="hObj">Find a BLUE keycard</div>
+    <div class="floorname"><span class="tag">LOC</span><span id="hFloor">SUBLEVEL 5</span></div>
+    <div class="obj"><span class="tag">OBJ</span><span id="hObj">Find a BLUE keycard</span><span class="cur">_</span></div>
     <div class="keys" id="hKeys"></div>
   </div>
-  <div class="hud-bl">
-    <div class="bar hp"><label>HEALTH</label><div><b id="hHp"></b></div><span id="hHpN">100</span></div>
+  <div class="boss" id="hBoss" hidden><div class="bname" id="hBossName">THE HOST</div><div class="btrack"><b id="hBossBar"></b></div></div>
+  <div class="hud-bl device">
+    <div class="dev-head"><span>BIO-MON · ARDENT</span><span class="rec">● LIVE</span></div>
+    <div class="vitals">
+      <div class="ecg" id="hEcg"></div>
+      <div class="hpbig"><span id="hHpN">100</span><small>HP</small></div>
+    </div>
+    <div class="bar hp"><label>VITALS</label><div><b id="hHp"></b></div></div>
     <div class="bar st"><label>STAMINA</label><div><b id="hSt"></b></div></div>
     <div class="bar bt"><label>LIGHT</label><div><b id="hBt"></b></div></div>
     <div class="med" id="hMed">MEDKITS 1 <small>[Q]</small></div>
   </div>
-  <div class="hud-br">
+  <div class="hud-br device">
     <div class="wname" id="hWeap">PISTOL</div>
     <div class="ammo"><span id="hMag">12</span><small>/ <span id="hRes">36</span></small></div>
     <div class="hint" id="hRel"></div>
@@ -48,114 +54,162 @@
 
 <!-- title -->
 <div class="screen" id="sTitle">
-  <div class="title-wrap">
-    <div class="brand">ARDENT BIOLABS · SITE ZERO</div>
-    <h1>BREACH<span>:</span> ZERO</h1>
-    <p class="tag">Three floors down. The lights are failing. Something is breathing in the vents.</p>
-    <div class="menu">
-      <button id="bContinue" hidden>Continue <small id="contInfo"></small></button>
-      <button id="bNew" class="primary">New game</button>
-      <button id="bSettings">Settings</button>
-      <button id="bControls">Controls</button>
+  <div class="term title-term">
+    <div class="term-bar"><span>ARDENT OS v3.1</span><span>SECURITY TERMINAL · SITE ZERO</span><span class="blink">■</span></div>
+    <div class="term-body">
+      <pre class="boot" id="bootLines"></pre>
+      <h1>BREACH<span>:</span>ZERO</h1>
+      <p class="tagline">Five floors down. The lights are failing. Something tall is following you.</p>
+      <div class="menu">
+        <button id="bContinue" hidden>Continue <small id="contInfo"></small></button>
+        <button id="bNew" class="primary">New game</button>
+        <button id="bSurvival">Survival <small>endless waves in the containment hall</small></button>
+        <button id="bRecords">Records</button>
+        <button id="bExtras">Extras <small id="extrasInfo"></small></button>
+        <button id="bSettings">Settings</button>
+        <button id="bControls">Controls</button>
+      </div>
+      <p class="warn" id="gpuWarnTitle" hidden>! Chrome is running without your graphics card. See Settings.</p>
+      <p class="foot">Headphones recommended · Keyboard &amp; mouse or controller</p>
     </div>
-    <p class="foot">Headphones recommended · Keyboard &amp; mouse</p>
   </div>
 </div>
 
 <div class="screen" id="sDiff" hidden>
-  <div class="panel">
-    <h2>Choose difficulty</h2>
-    <div class="diffs">
-      <button data-diff="easy"><b>Easy</b><span>Monsters hit softer. More ammo lying around.</span></button>
-      <button data-diff="normal" class="primary"><b>Normal</b><span>Scarce ammo. Every shot counts.</span></button>
-      <button data-diff="nightmare"><b>Nightmare</b><span>Faster, tougher, hungrier. Ammo is rare.</span></button>
+  <div class="term panel">
+    <div class="term-bar"><span id="diffTitle">New game · choose difficulty</span></div>
+    <div class="term-body">
+      <div class="diffs">
+        <button data-diff="easy"><b>Easy</b><span>Monsters hit softer. More ammo lying around.</span></button>
+        <button data-diff="normal" class="primary"><b>Normal</b><span>Scarce ammo. Every shot counts.</span></button>
+        <button data-diff="nightmare"><b>Nightmare</b><span>Faster, tougher, hungrier. Ammo is rare.</span></button>
+      </div>
+      <button class="back" data-back>Back</button>
     </div>
-    <button class="back" data-back>Back</button>
   </div>
 </div>
 
 <div class="screen" id="sControls" hidden>
-  <div class="panel">
-    <h2>Controls</h2>
-    <table class="keys-table">
-      <tr><td>W A S D</td><td>Move</td></tr>
-      <tr><td>Mouse</td><td>Look</td></tr>
-      <tr><td>Left click</td><td>Shoot</td></tr>
-      <tr><td>Right click</td><td>Aim down sights</td></tr>
-      <tr><td>Shift</td><td>Sprint (uses stamina, loud)</td></tr>
-      <tr><td>Space</td><td>Jump (climb onto crates)</td></tr>
-      <tr><td>C</td><td>Crouch (quiet, harder to spot)</td></tr>
-      <tr><td>R</td><td>Reload</td></tr>
-      <tr><td>F</td><td>Flashlight (recharges while off)</td></tr>
-      <tr><td>E</td><td>Use: audio logs, switches, lifts</td></tr>
-      <tr><td>Q</td><td>Use a medkit</td></tr>
-      <tr><td>1 / 2 / wheel</td><td>Pistol / shotgun</td></tr>
-      <tr><td>Esc</td><td>Pause</td></tr>
-    </table>
-    <p class="tip">Monsters hunt by sound and light. Gunshots carry through the corridors. Your flashlight beam gives you away.</p>
-    <button class="back" data-back>Back</button>
+  <div class="term panel">
+    <div class="term-bar"><span>Controls</span></div>
+    <div class="term-body">
+      <table class="keys-table">
+        <tr><th></th><th>Keyboard &amp; mouse</th><th>Controller</th></tr>
+        <tr><td>Move</td><td>W A S D</td><td>Left stick</td></tr>
+        <tr><td>Look</td><td>Mouse</td><td>Right stick</td></tr>
+        <tr><td>Shoot / swing</td><td>Left click</td><td>RT</td></tr>
+        <tr><td>Aim down sights</td><td>Right click</td><td>LT</td></tr>
+        <tr><td>Melee (quick bash)</td><td>V / middle click</td><td>RB</td></tr>
+        <tr><td>Sprint (loud)</td><td>Shift</td><td>Click left stick</td></tr>
+        <tr><td>Jump (onto crates)</td><td>Space</td><td>A</td></tr>
+        <tr><td>Crouch (quiet)</td><td>C</td><td>Hold B</td></tr>
+        <tr><td>Reload</td><td>R</td><td>X</td></tr>
+        <tr><td>Use: logs, switches</td><td>E</td><td>X (when near)</td></tr>
+        <tr><td>Flashlight</td><td>F</td><td>LB</td></tr>
+        <tr><td>Medkit</td><td>Q</td><td>D-pad up</td></tr>
+        <tr><td>Weapons</td><td>1 pistol · 2 shotgun · 3 SMG · 4 crowbar · wheel</td><td>Y / D-pad left &amp; right</td></tr>
+        <tr><td>Pause</td><td>Esc</td><td>Start</td></tr>
+      </table>
+      <p class="tip">Monsters hunt by sound and light. Gunshots carry through the corridors, your flashlight beam gives you away, and the crowbar is nearly silent. The tall one cannot be killed: run.</p>
+      <button class="back" data-back>Back</button>
+    </div>
   </div>
 </div>
 
 <div class="screen" id="sSettings" hidden>
-  <div class="panel">
-    <h2>Settings</h2>
-    <div class="settings">
-      <label>Mouse sensitivity <output id="oSens"></output><input type="range" id="sSens" min="0.2" max="3" step="0.05"></label>
-      <label>Field of view <output id="oFov"></output><input type="range" id="sFov" min="60" max="110" step="1"></label>
-      <label>Brightness <output id="oBright"></output><input type="range" id="sBright" min="0.6" max="2" step="0.05"></label>
-      <label>Master volume <output id="oVol"></output><input type="range" id="sVol" min="0" max="1" step="0.05"></label>
-      <label>Ambience &amp; music <output id="oAmb"></output><input type="range" id="sAmb" min="0" max="1" step="0.05"></label>
-      <label class="row">Graphics
-        <select id="sQual"><option value="low">Low (fastest)</option><option value="medium">Medium</option><option value="high">High</option></select></label>
-      <label class="row chk"><input type="checkbox" id="sInvert"> Invert mouse Y</label>
-      <label class="row chk"><input type="checkbox" id="sBob"> Head bob</label>
-      <label class="row chk"><input type="checkbox" id="sFlash"> Reduce flashing &amp; shake</label>
-      <label class="row chk"><input type="checkbox" id="sAutoRes"> Auto resolution (lowers it when the frame rate drops)</label>
+  <div class="term panel">
+    <div class="term-bar"><span>Settings</span></div>
+    <div class="term-body">
+      <div class="settings">
+        <label>Mouse sensitivity <output id="oSens"></output><input type="range" id="sSens" min="0.2" max="3" step="0.05"></label>
+        <label>Controller look speed <output id="oPadSens"></output><input type="range" id="sPadSens" min="0.3" max="2.5" step="0.05"></label>
+        <label>Field of view <output id="oFov"></output><input type="range" id="sFov" min="60" max="110" step="1"></label>
+        <label>Brightness <output id="oBright"></output><input type="range" id="sBright" min="0.6" max="2" step="0.05"></label>
+        <label>Master volume <output id="oVol"></output><input type="range" id="sVol" min="0" max="1" step="0.05"></label>
+        <label>Ambience &amp; music <output id="oAmb"></output><input type="range" id="sAmb" min="0" max="1" step="0.05"></label>
+        <label class="row">Graphics
+          <select id="sQual"><option value="low">Low (fastest)</option><option value="medium">Medium</option><option value="high">High</option></select></label>
+        <label class="row chk"><input type="checkbox" id="sPads"> Controllers ON (turn off if the view spins by itself)</label>
+        <label class="row chk"><input type="checkbox" id="sInvert"> Invert look Y</label>
+        <label class="row chk"><input type="checkbox" id="sBob"> Head bob</label>
+        <label class="row chk"><input type="checkbox" id="sFlash"> Reduce flashing &amp; shake</label>
+        <label class="row chk"><input type="checkbox" id="sAutoRes"> Auto resolution (lowers it when the frame rate drops)</label>
+      </div>
+      <p class="warn" id="gpuWarn" hidden>Chrome is drawing this game without your graphics card (software rendering). Turn on "Use graphics acceleration when available" in Chrome settings, or set Graphics to Low.</p>
+      <button class="back" data-back>Done</button>
     </div>
-    <p class="warn" id="gpuWarn" hidden>Chrome is drawing this game without your graphics card (software rendering). Turn on "Use graphics acceleration when available" in Chrome settings, or set Graphics to Low.</p>
-    <button class="back" data-back>Done</button>
+  </div>
+</div>
+
+<div class="screen" id="sRecords" hidden>
+  <div class="term panel">
+    <div class="term-bar"><span>Records · personnel file</span></div>
+    <div class="term-body">
+      <div class="pstats" id="recList"></div>
+      <button class="back" data-back>Back</button>
+    </div>
+  </div>
+</div>
+
+<div class="screen" id="sExtras" hidden>
+  <div class="term panel">
+    <div class="term-bar"><span>Extras · restricted files</span></div>
+    <div class="term-body">
+      <p class="tip">Earned by playing. Switch them on here; they apply to your next run.</p>
+      <div class="settings" id="extList"></div>
+      <button class="back" data-back>Back</button>
+    </div>
   </div>
 </div>
 
 <div class="screen dim" id="sPause" hidden>
-  <div class="panel narrow">
-    <h2>Paused</h2>
-    <div class="pstats" id="pStats"></div>
-    <div class="menu">
-      <button id="bResume" class="primary">Resume</button>
-      <button id="bPSettings">Settings</button>
-      <button id="bPControls">Controls</button>
-      <button id="bRestartFloor">Restart floor</button>
-      <button id="bQuit">Quit to title</button>
+  <div class="term panel narrow">
+    <div class="term-bar"><span>Paused</span><span class="blink">■</span></div>
+    <div class="term-body">
+      <div class="pstats" id="pStats"></div>
+      <div class="menu">
+        <button id="bResume" class="primary">Resume</button>
+        <button id="bPSettings">Settings</button>
+        <button id="bPControls">Controls</button>
+        <button id="bRestartFloor">Restart floor</button>
+        <button id="bQuit">Quit to title</button>
+      </div>
     </div>
   </div>
 </div>
 
 <div class="screen dim red" id="sDead" hidden>
-  <div class="panel narrow center">
-    <h2 class="big">YOU DIED</h2>
-    <p id="deadMsg">The lab keeps what it kills.</p>
-    <div class="menu">
-      <button id="bRetry" class="primary">Retry floor</button>
-      <button id="bDeadQuit">Quit to title</button>
+  <div class="term panel narrow center alert">
+    <div class="term-bar"><span>BIO-MON · SIGNAL LOST</span></div>
+    <div class="term-body">
+      <h2 class="big">FLATLINE</h2>
+      <p id="deadMsg">The lab keeps what it kills.</p>
+      <div class="menu">
+        <button id="bRetry" class="primary">Retry floor</button>
+        <button id="bDeadQuit">Quit to title</button>
+      </div>
     </div>
   </div>
 </div>
 
 <div class="screen" id="sWin" hidden>
-  <div class="panel narrow center">
-    <h2 class="big green">YOU ESCAPED</h2>
-    <p>The freight lift climbs toward daylight. Below you, something screams up the shaft, and then the doors seal.</p>
-    <div class="pstats" id="winStats"></div>
-    <div class="menu"><button id="bWinMenu" class="primary">Back to title</button></div>
+  <div class="term panel narrow center ok">
+    <div class="term-bar"><span>SURFACE LINK · RESTORED</span></div>
+    <div class="term-body">
+      <h2 class="big green">YOU ESCAPED</h2>
+      <p>The freight lift climbs toward daylight. Below you, something screams up the shaft, and then the doors seal.</p>
+      <div class="pstats" id="winStats"></div>
+      <div class="unlocks" id="winUnlocks" hidden></div>
+      <div class="menu"><button id="bWinMenu" class="primary">Back to title</button></div>
+    </div>
   </div>
 </div>
 
 <div class="card" id="floorCard" hidden><small id="fcNum"></small><b id="fcName"></b><span id="fcSub"></span></div>
+<div class="crt"></div>
 <div class="fade" id="fade"></div>
 <div class="clicktoplay" id="clickPlay" hidden>Click to continue</div>
-<div class="loading" id="loading">Loading…</div>
+<div class="loading" id="loading">ESTABLISHING LINK…</div>
 
 <script type="module" src="js/main.js"></script>
 </body>

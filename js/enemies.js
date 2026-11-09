@@ -10,6 +10,10 @@ export const TYPES = {
   crawler: { hp: 50,  walk: 1.5, run: 6.6, dmg: 9,  reach: 1.5, windup: 0.22, cd: 0.75, r: 0.36 },
   brute:   { hp: 650, walk: 0.9, run: 3.3, dmg: 32, reach: 2.4, windup: 0.75, cd: 1.5, r: 0.72 },
   spitter: { hp: 80,  walk: 1.0, run: 3.4, dmg: 12, reach: 1.6, windup: 0.5, cd: 2.2, r: 0.38 },
+  // set-piece hunter: cannot be killed, only staggered; leaves when its scene ends
+  stalker: { hp: 1e9, walk: 1.4, run: 5.4, dmg: 34, reach: 2.1, windup: 0.32, cd: 0.9, r: 0.42, stalker: true },
+  // THE HOST: reactor boss
+  host:    { hp: 2600, walk: 1.2, run: 3.1, dmg: 30, reach: 3.0, windup: 0.75, cd: 1.6, r: 0.95, boss: true },
 };
 
 let MAT = null;
@@ -27,6 +31,9 @@ function mats() {
     bloom: new THREE.MeshStandardMaterial({ color: 0x401008, emissive: 0xff4a1a, emissiveIntensity: 0.6, roughness: 0.4 }),
     sac: new THREE.MeshStandardMaterial({ color: 0x405010, emissive: 0x9dff2a, emissiveIntensity: 1.2, roughness: 0.2, transparent: true, opacity: 0.9 }),
     acid: new THREE.MeshBasicMaterial({ color: 0xb4ff3a }),
+    pale: new THREE.MeshStandardMaterial({ map: skin, color: 0xcfc8c0, roughness: 0.5, metalness: 0 }),
+    paleDark: new THREE.MeshStandardMaterial({ map: skin2, color: 0x6a6460, roughness: 0.55, metalness: 0 }),
+    eyeRed: new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xff2a10, emissiveIntensity: 4 }),
   };
   return MAT;
 }
@@ -41,7 +48,7 @@ function seg(parent, y, r, len, m) {
 }
 
 function humanoid(o) {
-  const M = mats();
+  const M0 = mats(), M = { ...M0, skin: o.skin || M0.skin, skinDark: o.skinDark || M0.skinDark, eye: o.eye || M0.eye };
   const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
   const s = o.scale || 1; body.scale.setScalar(s);
   const hipY = o.leg * 2 + 0.05;
@@ -75,7 +82,7 @@ function humanoid(o) {
   }
   const arms = [];
   for (const sd of [-1, 1]) {
-    const big = o.bigArm && sd === 1 ? 1.7 : 1;
+    const big = o.bigBoth || (o.bigArm && sd === 1) ? 1.7 : 1;
     const up = seg(torso, o.th + 0.12, o.limbR * big, o.arm, M.skin); up.position.x = sd * (o.tw * 0.55 + o.limbR); up.rotation.z = sd * 0.15;
     const lo = seg(up, -o.arm, o.limbR * 0.85 * big, o.arm * 1.15, M.skinDark);
     // claws
@@ -85,8 +92,10 @@ function humanoid(o) {
   }
   let sac = null;
   if (o.sac) { sac = ball(0.17, M.sac, 1.2, 1, 1.1); sac.position.set(0, (o.neck || 0.12) * 0.4, 0.14); neck.add(sac); }
+  const weak = [];
+  for (let i = 0; i < (o.backSacs || 0); i++) { const b = ball(0.13 + (i % 2) * 0.04, M.sac); b.position.set((i % 3 - 1) * cr * 0.7, o.th * (0.55 + (i % 2) * 0.35), -cr * 0.75); torso.add(b); weak.push(b); }
   const legMark = new THREE.Object3D(); legMark.position.y = -o.leg * 0.9; hips.add(legMark);
-  const hits = [{ o: chest, r: cr * 1.3 * s }, { o: waist, r: cr * 1.1 * s }, { o: legMark, r: o.tw * 0.6 * s }, { o: skull, r: o.headR * 1.3 * s, head: true }];
+  const hits = [{ o: chest, r: cr * 1.3 * s }, { o: waist, r: cr * 1.1 * s }, { o: legMark, r: o.tw * 0.6 * s }, { o: skull, r: o.headR * 1.3 * s, head: true }, ...weak.map((b) => ({ o: b, r: 0.22 * s, head: true }))];
   return { root, body, hips, torso, neck, head, jaw, legs, arms, sac, s, hipY, hits };
 }
 
@@ -122,7 +131,7 @@ function crawlerModel() {
 // the pivots stay, so the procedural animation is untouched. The merged geometry is cached
 // per type, so later spawns of that type reuse it instead of uploading new buffers.
 const GEO = new Map();
-const NO_SHADOW = new Set(['eye', 'mouth', 'bloom', 'sac', 'acid']);
+const NO_SHADOW = new Set(['eye', 'eyeRed', 'mouth', 'bloom', 'sac', 'acid']);
 function compact(m, type) {
   const M = mats(), matName = new Map(Object.entries(M).map(([k, v]) => [v, k]));
   const refs = new Map(m.hits.map((h) => [h.o, null]));
@@ -161,6 +170,8 @@ function build(type) { return compact(buildRaw(type), type); }
 function buildRaw(type) {
   if (type === 'crawler') return crawlerModel();
   if (type === 'brute') return humanoid({ scale: 1.4, leg: 0.42, limbR: 0.1, tw: 0.7, th: 0.62, arm: 0.48, headR: 0.14, neck: 0.04, bigArm: true, bulk: true, growths: 10, legMat: mats().skinDark });
+  if (type === 'stalker') { const M = mats(); return humanoid({ scale: 1.22, leg: 0.6, limbR: 0.042, tw: 0.34, th: 0.62, arm: 0.66, headR: 0.12, neck: 0.32, growths: 0, skin: M.pale, skinDark: M.paleDark, eye: M.eyeRed, legMat: M.paleDark }); }
+  if (type === 'host') return humanoid({ scale: 1.5, leg: 0.42, limbR: 0.12, tw: 0.8, th: 0.7, arm: 0.52, headR: 0.15, neck: 0.05, bigBoth: true, bulk: true, growths: 22, sac: true, backSacs: 4, legMat: mats().skinDark });
   if (type === 'spitter') return humanoid({ leg: 0.46, limbR: 0.048, tw: 0.38, th: 0.48, arm: 0.38, headR: 0.13, neck: 0.3, sac: true, growths: 2 });
   return humanoid({ leg: 0.45, limbR: 0.05, tw: 0.42, th: 0.52, arm: 0.4, headR: 0.13, neck: 0.12, growths: 4 });
 }
@@ -178,7 +189,7 @@ export class Enemies {
     this.list = []; this.shots = [];
   }
 
-  spawn(type, x, z, { dormant = false, alert = false, drop = false } = {}) {
+  spawn(type, x, z, { dormant = false, alert = false, drop = false, decoy = null } = {}) {
     const T = TYPES[type], D = this.G.diff, m = build(type);
     m.root.position.set(x, 0, z); m.root.rotation.y = Math.random() * 6.28;
     this.group.add(m.root);
@@ -189,6 +200,7 @@ export class Enemies {
       growlT: 2 + Math.random() * 6, stepPh: 0, special: 0, specialCd: 2 + Math.random() * 3, mode: null, vy: 0, y: 0, twitch: 0, stuck: 0,
     };
     if (dormant) m.root.visible = false;
+    if (decoy) { e.state = 'decoy'; e.decoy = decoy; e.yaw = m.root.rotation.y = Math.atan2(decoy.dir.x, decoy.dir.z); }
     if (drop) { e.y = H - 0.4; e.vy = 0; }
     this.list.push(e);
     if (alert) this.alert(e, true);
@@ -207,7 +219,7 @@ export class Enemies {
   }
 
   alert(e, force) {
-    if (e.state === 'dead' || e.state === 'dormant') return;
+    if (e.state === 'dead' || e.state === 'dormant' || e.state === 'decoy') return;
     if (e.state !== 'hunt') {
       e.state = 'hunt'; e.lost = 0;
       if (this.shriekT <= 0 || force) { A.shriek(e.type, e.pos.clone().setY(1.5)); this.shriekT = 0.6; }
@@ -215,6 +227,14 @@ export class Enemies {
     }
     e.lost = 0;
   }
+
+  // a body on the floor that was not there a moment ago
+  corpse(x, z) {
+    const e = this.spawn('husk', x, z); e.state = 'dead'; e.deadT = 0.6; e.keep = true; e.fallDir = Math.random() * 6.28; e.pooled = false;
+    return e;
+  }
+  // take something out of the world without a death (stalker leaving, decoys)
+  vanish(e) { e.state = 'dead'; e.gone = true; e.m.root.visible = false; this.group.remove(e.m.root); }
 
   // noise travels along corridors: alert enemies within this many cells of path distance
   noise(cells) {
@@ -230,7 +250,7 @@ export class Enemies {
   hitTest(o, dir, max) {
     let best = null;
     for (const e of this.list) {
-      if (e.state === 'dead' || e.state === 'dormant') continue;
+      if (e.state === 'dead' || e.state === 'dormant' || e.state === 'decoy') continue;
       for (const h of e.m.hits) {
         h.o.getWorldPosition(_v);
         _w.subVectors(_v, o); const b = _w.dot(dir); if (b < 0) continue;
@@ -242,10 +262,18 @@ export class Enemies {
     return best;
   }
 
-  damage(e, amount, dir, head, heavy) {
-    if (e.state === 'dead') return false;
+  damage(e, amount, dir, head, heavy, kind) {
+    if (e.state === 'dead' || e.state === 'decoy') return false;
+    if (e.T.stalker) {
+      // it does not die. Hurting it only buys you a moment.
+      e.flinch = 1; e.stagger = Math.max(e.stagger, kind === 'melee' ? 0.9 : heavy ? 0.5 : 0.16);
+      e.vel.addScaledVector(dir, heavy ? 2.5 : 0.6);
+      if (Math.random() < 0.25) A.pain('stalker', e.pos.clone().setY(2));
+      return false;
+    }
     e.hp -= amount; e.flinch = 1; this.alert(e);
-    if (heavy && e.type !== 'brute') { e.stagger = 0.35; e.vel.addScaledVector(dir, 3); }
+    if (heavy && e.type !== 'brute' && !e.T.boss) { e.stagger = 0.35; e.vel.addScaledVector(dir, 3); }
+    if (e.T.boss) this.G.onBossHit?.(e);
     if (e.hp <= 0) { this.kill(e, dir); return true; }
     if (Math.random() < 0.5) A.pain(e.type, e.pos.clone().setY(1.4));
     return false;
@@ -254,6 +282,7 @@ export class Enemies {
   kill(e, dir) {
     e.state = 'dead'; e.deadT = 0; e.fallDir = Math.atan2(dir.x, dir.z) - e.yaw; A.death(e.type, e.pos.clone().setY(1.2));
     this.G.onKill(e);
+    if (e.T.boss) this.G.onBossDead?.(e);
   }
 
   update(dt) {
@@ -267,11 +296,13 @@ export class Enemies {
       if (e.y > 0 || e.vy > 0) { e.vy -= 20 * dt; e.y = Math.max(0, e.y + e.vy * dt); if (e.y === 0) { e.vy = 0; A.step('brute', e.pos.clone()); } }
       if (e.gone) continue;
       if (e.state === 'dead') { this.animDead(e, dt); continue; }
+      if (e.state === 'decoy') { this.updateDecoy(e, dt); continue; }
       const dx = pp.x - e.pos.x, dz = pp.z - e.pos.z, dist = Math.hypot(dx, dz);
       e.cd -= dt; e.specialCd -= dt; e.flinch = Math.max(0, e.flinch - dt * 4); e.stagger -= dt; e.twitch = Math.max(0, e.twitch - dt);
 
       // --- perception (5x a second) ---
       e.think -= dt;
+      if (e.T.stalker && P.alive) { e.state = 'hunt'; e.lost = 0; }
       if (e.think <= 0) {
         e.think = 0.2;
         e.see = dist < 40 && W.los(e.pos.x, e.pos.z, pp.x, pp.z);
@@ -294,7 +325,7 @@ export class Enemies {
         face = Math.atan2(dx, dz);
         if (e.see && dist < 14) { tx = dx / dist; tz = dz / dist; }
         else { const s = this.flowStep(e); if (s) { tx = s[0]; tz = s[1]; } else if (e.see) { tx = dx / dist; tz = dz / dist; } }
-        speed = T.run * D.speed;
+        speed = T.run * D.speed * (T.boss && e.hp < e.maxHp * 0.25 ? 1.35 : 1);
         if (e.type === 'spitter' && e.see) {
           if (dist < 5) { tx = -tx; tz = -tz; speed *= 0.6; } else if (dist < 11) speed = 0;
         }
@@ -328,6 +359,13 @@ export class Enemies {
           G.shake(0.3);
         } else if (e.type === 'spitter' && dist > 3 && dist < 20) {
           e.mode = 'spit'; e.modeT = 0.6; e.specialCd = T.cd + Math.random();
+        } else if (T.boss && dist < 22) {
+          // THE HOST: charge, acid volley, or call its brood; faster and nastier as it weakens
+          const hpF = e.hp / e.maxHp, r = Math.random(), adds = this.list.filter((o) => o !== e && o.state !== 'dead' && o.state !== 'dormant' && o.state !== 'decoy').length;
+          if (r < 0.35 && dist > 4.5) { e.mode = 'windcharge'; e.modeT = 0.9; A.shriek('host', e.pos.clone().setY(3)); G.shake(0.45); }
+          else if (r < 0.72 || adds >= 5) { e.mode = 'volley'; e.modeT = 0.9; }
+          else { e.mode = 'summon'; e.modeT = 1.3; A.shriek('host', e.pos.clone().setY(3)); G.shake(0.6); }
+          e.specialCd = (hpF < 0.5 ? 2.0 : 3.4) + Math.random() * 1.5;
         }
       }
       if (e.mode) {
@@ -344,8 +382,14 @@ export class Enemies {
           e.vel.set(e.chargeDir.x * 8 * D.speed, 0, e.chargeDir.z * 8 * D.speed); face = Math.atan2(e.chargeDir.x, e.chargeDir.z);
           if (!e.hitDone && dist < 1.6) { e.hitDone = true; P.damage(T.dmg * 1.2 * D.dmg, e.pos, 9); G.shake(0.8); }
           if (e.modeT <= 0) { e.mode = null; }
-          if (e.bonk) { e.mode = null; e.stagger = 1.4; G.shake(0.5); A.land(2.5); e.bonk = false; }
+          if (e.bonk) { e.mode = null; e.stagger = T.boss ? 0.8 : 1.4; G.shake(0.5); A.land(2.5); e.bonk = false; }
           if (Math.random() < dt * 8) A.step('brute', e.pos.clone());
+        } else if (e.mode === 'volley') {
+          face = Math.atan2(dx, dz); speed = 0;
+          if (e.modeT <= 0) { e.mode = null; const n = e.hp < e.maxHp * 0.5 ? 5 : 3; for (let i = 0; i < n; i++) this.spit(e, (i - (n - 1) / 2) * 0.22); }
+        } else if (e.mode === 'summon') {
+          face = Math.atan2(dx, dz); speed = 0;
+          if (e.modeT <= 0) { e.mode = null; G.onBossSummon?.(e); }
         } else if (e.mode === 'spit') {
           face = Math.atan2(dx, dz); speed = 0;
           if (m.sac) m.sac.scale.setScalar(1.2 + (0.6 - e.modeT) * 1.2);
@@ -360,7 +404,7 @@ export class Enemies {
           if (e.atk <= 0) {
             e.cd = T.cd;
             const facing = Math.abs(((Math.atan2(dx, dz) - e.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 1.1;
-            if (dist < T.reach + 0.45 && facing && Math.abs(P.pos.y) < 1.4) P.damage(T.dmg * D.dmg, e.pos, e.type === 'brute' ? 7 : 2.5);
+            if (dist < T.reach + 0.45 && facing && Math.abs(P.pos.y) < 1.4) P.damage(T.dmg * D.dmg, e.pos, e.type === 'brute' || T.boss ? 7 : T.stalker ? 4 : 2.5);
           }
         } else if (dist < T.reach && e.cd <= 0 && e.see) { e.atk = T.windup; A.attack(e.type, e.pos.clone().setY(1.5)); }
       }
@@ -372,7 +416,7 @@ export class Enemies {
       }
       // separation
       for (const o of this.list) {
-        if (o === e || o.state === 'dead' || o.state === 'dormant') continue;
+        if (o === e || o.state === 'dead' || o.state === 'dormant' || o.state === 'decoy') continue;
         const sx = e.pos.x - o.pos.x, sz = e.pos.z - o.pos.z, d2 = sx * sx + sz * sz, rr = e.T.r + o.T.r;
         if (d2 < rr * rr && d2 > 1e-6) { const d = Math.sqrt(d2), p = (rr - d) / d * 0.5; e.pos.x += sx * p; e.pos.z += sz * p; }
       }
@@ -420,12 +464,13 @@ export class Enemies {
     return g;
   }
 
-  spit(e) {
+  spit(e, yawOff = 0) {
     const P = this.G.player, M = mats();
-    const o = e.pos.clone(); o.y = e.y + 1.75;
+    const o = e.pos.clone(); o.y = e.y + (e.T.boss ? 2.6 : 1.75);
     const target = P.pos.clone(); target.y += 1.2; target.addScaledVector(P.vel, 0.35);
     const d = target.sub(o); const t = d.length() / 15;
     const vel = d.divideScalar(t); vel.y += 3 * t;
+    if (yawOff) vel.applyAxisAngle(new THREE.Vector3(0, 1, 0), yawOff);
     const mesh = new THREE.Mesh(SPIT_GEO || (SPIT_GEO = new THREE.SphereGeometry(0.12, 8, 6)), M.acid); mesh.position.copy(o); this.group.add(mesh);
     this.shots.push({ mesh, vel, life: 3, from: e.pos.clone() });
     A.spit(o);
@@ -495,6 +540,14 @@ export class Enemies {
     if (m.sac && !e.mode) m.sac.scale.set(1.2 + Math.sin(t * 3) * 0.06, 1, 1.1);
   }
 
+  // a scare runner: sprints off into the dark ahead of you and is gone
+  updateDecoy(e, dt) {
+    const d = e.decoy; d.life -= dt;
+    e.pos.x += d.dir.x * d.speed * dt; e.pos.z += d.dir.z * d.speed * dt;
+    this.animate(e, dt, d.speed, 99);
+    if (d.life <= 0 || !this.G.world.walkable(Math.floor(e.pos.x / C), Math.floor(e.pos.z / C))) this.vanish(e);
+  }
+
   animDead(e, dt) {
     const m = e.m; e.deadT += dt;
     const k = Math.min(1, e.deadT / 0.55), ease = 1 - (1 - k) * (1 - k);
@@ -507,6 +560,7 @@ export class Enemies {
       m.arms.forEach((a) => { a.up.rotation.x += (-0.5 - a.up.rotation.x) * 0.1; });
     }
     if (e.deadT > 0.55 && !e.pooled) { e.pooled = true; this.G.fx.bloodPool(e.pos, e.type === 'brute' ? 1.6 : 1); }
+    if (e.keep) return;
     if (e.deadT > 9) { m.root.position.y -= dt * 0.15; }
     if (e.deadT > 13 && !e.gone) { m.root.visible = false; e.gone = true; this.group.remove(m.root); }
   }

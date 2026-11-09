@@ -1,17 +1,18 @@
 // Sanity check for the floor maps: equal row widths, closed outer walls, doors between two floor cells,
 // and that every floor can be finished (keys reachable in order, lift reachable). Run: node tools/check-maps.mjs
-import { FLOORS } from '../js/levels.js';
+import { FLOORS, ARENA } from '../js/levels.js';
 
 let bad = 0;
 const err = (f, m) => { bad++; console.log(`floor ${f + 1}: ${m}`); };
 const SOLID = new Set(['#', 'c', 't', 'o']);
 const DOOR_KEY = { 1: 'b', 2: 'r', 3: 'y' };
 
-FLOORS.forEach((F, fi) => {
+[...FLOORS, { ...ARENA, arena: true }].forEach((F, fi) => {
   const m = F.map, H = m.length, W = m[0].length;
   m.forEach((r, y) => { if (r.length !== W) err(fi, `row ${y} is ${r.length} wide, expected ${W}`); });
   const at = (x, y) => (m[y] && m[y][x]) || '#';
   for (let x = 0; x < W; x++) for (const y of [0, H - 1]) if (!'#X'.includes(at(x, y))) err(fi, `outer wall open at ${x},${y}`);
+  if (!F.arena) { const xs = m.join('').split('X').length - 1; if (xs !== 1) err(fi, `${xs} lifts (X), expected 1`); }
   for (let y = 0; y < H; y++) for (const x of [0, W - 1]) if (at(x, y) !== '#') err(fi, `outer wall open at ${x},${y}`);
   let start, exit; const counts = {};
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
@@ -24,8 +25,11 @@ FLOORS.forEach((F, fi) => {
       if (!ew && !ns) err(fi, `door at ${x},${y} is not between two walls`);
     }
   }
-  if (!start || !exit) err(fi, 'missing P or X');
+  if (!start || (!exit && !F.arena)) err(fi, 'missing P or X');
   if ((counts.n || 0) !== F.notes.length) err(fi, `${counts.n || 0} logs on map but ${F.notes.length} texts`);
+  if ((counts['!'] || 0) !== (F.scares || []).length) err(fi, `${counts['!'] || 0} scare triggers on map but ${(F.scares || []).length} scares listed`);
+  if (!!counts.$ !== !!counts.Q) err(fi, 'stalker trigger ($) and stalker spawn (Q) must come together');
+  if (F.finale && !counts.M) err(fi, 'finale floor needs an M (boss spawn)');
   // progressive flood fill
   const keys = new Set();
   let reach;
@@ -42,7 +46,7 @@ FLOORS.forEach((F, fi) => {
     }
     for (const k of reach) { const [x, y] = k.split(',').map(Number); if ('bry'.includes(at(x, y))) keys.add(at(x, y)); }
   }
-  if (!reach.has(exit.join())) err(fi, 'lift not reachable');
+  if (exit && !reach.has(exit.join())) err(fi, 'lift not reachable');
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const c = at(x, y);
     if (!SOLID.has(c) && !reach.has(x + ',' + y)) err(fi, `cell ${x},${y} '${c}' unreachable`);

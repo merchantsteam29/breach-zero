@@ -86,6 +86,10 @@ export function shot(kind) {
     noise(d, t, 0.5, { f: 5000, f2: 300, gain: 1.4, attack: 0.001 });
     tone(d, t, 0.35, { type: 'sine', f: 120, f2: 35, gain: 1.6 });
     noise(d, t + 0.01, 0.9, { f: 600, f2: 120, gain: 0.5, brown: true });
+  } else if (kind === 'smg') {
+    noise(d, t, 0.12, { f: 6000, f2: 700, gain: 0.75, attack: 0.001 });
+    tone(d, t, 0.1, { type: 'triangle', f: 230, f2: 70, gain: 0.6 });
+    noise(d, t + 0.004, 0.3, { type: 'bandpass', f: 1700, f2: 400, q: 0.8, gain: 0.25 });
   } else {
     noise(d, t, 0.22, { f: 7000, f2: 500, gain: 1.0, attack: 0.001 });
     tone(d, t, 0.18, { type: 'triangle', f: 190, f2: 50, gain: 0.9 });
@@ -201,6 +205,8 @@ const VOICES = {
   crawler: { idle: { f: 260, f2: 200, dur: 0.6, gain: 0.25, rough: 1.5, form: [1400, 2600] }, alert: { f: 900, f2: 1300, dur: 0.7, gain: 0.55, rough: 1.8, form: [1800, 3200] } },
   brute: { idle: { f: 55, f2: 42, dur: 2.2, gain: 0.6, rough: 0.7, form: [250, 500] }, alert: { f: 110, f2: 60, dur: 1.8, gain: 1.0, rough: 1.0, form: [350, 800] } },
   spitter: { idle: { f: 160, f2: 120, dur: 1.2, gain: 0.3, rough: 1.4, form: [700, 1500] }, alert: { f: 500, f2: 380, dur: 0.9, gain: 0.55, rough: 1.6, form: [1100, 2500] } },
+  stalker: { idle: { f: 70, f2: 64, dur: 2.6, gain: 0.45, rough: 0.3, form: [300, 2600] }, alert: { f: 1200, f2: 240, dur: 2.2, gain: 0.85, rough: 2.2, form: [1600, 3600] } },
+  host: { idle: { f: 40, f2: 30, dur: 3, gain: 0.8, rough: 0.9, form: [180, 420] }, alert: { f: 85, f2: 38, dur: 2.6, gain: 1.2, rough: 1.3, form: [260, 700, 1500] } },
 };
 export function growl(kind, pos) { if (ctx) voice(pos, { ...VOICES[kind].idle, f: VOICES[kind].idle.f * R(0.85, 1.15) }); }
 export function shriek(kind, pos) { if (ctx) voice(pos, { ...VOICES[kind].alert, f: VOICES[kind].alert.f * R(0.9, 1.1) }); }
@@ -209,9 +215,41 @@ export function pain(kind, pos) { if (!ctx) return; const v = VOICES[kind].alert
 export function death(kind, pos) { if (!ctx) return; const v = VOICES[kind].alert; voice(pos, { ...v, f: v.f, f2: v.f * 0.3, dur: 1.4, gain: v.gain * 0.8 }); setTimeout(() => ctx && noise(out(pos, 0.3), now(), 0.4, { f: 300, gain: 0.5 }), 600); }
 export function step(kind, pos) {
   if (!ctx) return; const t = now(), d = out(pos, 0.2);
-  const big = kind === 'brute';
+  const big = kind === 'brute' || kind === 'host';
   noise(d, t, big ? 0.25 : 0.08, { type: 'bandpass', f: big ? 120 : (kind === 'crawler' ? 1200 : 380), q: 1, gain: big ? 0.9 : 0.25 });
   if (big) tone(d, t, 0.2, { f: 50, f2: 30, gain: 0.6 });
+}
+
+// ---------- melee ----------
+export function swing() { if (!ctx) return; const t = now(), d = out(null, 0.1); noise(d, t, 0.22, { type: 'bandpass', f: 500, f2: 2200, q: 1.2, gain: 0.35, attack: 0.04 }); }
+export function meleeHit(flesh, pos) {
+  if (!ctx) return; const t = now(), d = out(pos, 0.3);
+  if (flesh) { noise(d, t, 0.18, { f: 900, f2: 150, gain: 0.9 }); tone(d, t, 0.12, { f: 110, f2: 50, gain: 0.7 }); }
+  else { tone(d, t, 0.5, { type: 'triangle', f: R(1800, 2300), f2: 1500, gain: 0.25 }); tone(d, t, 0.4, { type: 'square', f: R(3100, 3500), gain: 0.05 }); noise(d, t, 0.08, { type: 'highpass', f: 3000, gain: 0.5 }); }
+}
+// something heavy hitting a door from the far side
+export function thump(pos) { if (!ctx) return; const t = now(), d = out(pos, 0.6); noise(d, t, 0.35, { f: 260, gain: 1.1, brown: true }); tone(d, t, 0.3, { f: 65, f2: 38, gain: 0.9 }); noise(d, t, 0.6, { type: 'bandpass', f: 140, q: 8, gain: 0.3 }); }
+export function whisper(pos) {
+  if (!ctx) return; const t = now(), d = out(pos, 0.5);
+  for (let i = 0; i < 5; i++) noise(d, t + i * R(0.12, 0.22), R(0.15, 0.3), { type: 'bandpass', f: R(2500, 4500), q: 6, gain: 0.18, attack: 0.05 });
+}
+
+// stalker chase: a fast pulse plus screeching strings while it hunts you
+let chase = null;
+export function chaseMusic(on) {
+  if (!ctx) return;
+  if (on && !chase) {
+    const t = now(), g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.5, t + 0.6); g.connect(mus); g.connect(verbIn);
+    const ns = [];
+    for (const f of [622, 659, 932]) { const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; const og = ctx.createGain(); og.gain.value = 0.025; const v = ctx.createOscillator(); v.frequency.value = R(5, 8); const vg = ctx.createGain(); vg.gain.value = 12; v.connect(vg); vg.connect(o.frequency); o.connect(og); og.connect(g); o.start(); v.start(); ns.push(o, v); }
+    const b = ctx.createOscillator(); b.type = 'sawtooth'; b.frequency.value = 46; const bl = ctx.createBiquadFilter(); bl.type = 'lowpass'; bl.frequency.value = 220;
+    const am = ctx.createGain(); am.gain.value = 0; const amL = ctx.createOscillator(); amL.type = 'square'; amL.frequency.value = 3.2; const amG = ctx.createGain(); amG.gain.value = 0.35;
+    amL.connect(amG); amG.connect(am.gain); b.connect(bl); bl.connect(am); am.connect(g); b.start(); amL.start(); ns.push(b, amL);
+    chase = { g, ns };
+  } else if (!on && chase) {
+    const c = chase; chase = null; c.g.gain.cancelScheduledValues(now()); c.g.gain.setValueAtTime(c.g.gain.value, now()); c.g.gain.linearRampToValueAtTime(0, now() + 2);
+    setTimeout(() => c.ns.forEach((n) => { try { n.stop(); } catch {} }), 2200);
+  }
 }
 
 // ---------- scares + ambience ----------

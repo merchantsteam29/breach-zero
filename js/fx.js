@@ -129,22 +129,27 @@ export class FX {
 const FinalShader = {
   uniforms: {
     tDiffuse: { value: null }, time: { value: 0 }, hurt: { value: 0 }, low: { value: 0 }, acid: { value: 0 },
-    grain: { value: 0.06 }, vig: { value: 1.0 }, ca: { value: 0.0015 }, fade: { value: 0 },
+    grain: { value: 0.06 }, vig: { value: 1.0 }, ca: { value: 0.0015 }, fade: { value: 0 }, fmode: { value: 0 },
   },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float time, hurt, low, acid, grain, vig, ca, fade; varying vec2 vUv;
+    uniform sampler2D tDiffuse; uniform float time, hurt, low, acid, grain, vig, ca, fade, fmode; varying vec2 vUv;
     float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233)) + time*7.0) * 43758.5453); }
     void main(){
       vec2 uv = vUv, d = uv - 0.5; float r = length(d);
-      float shift = ca + hurt * 0.006 + acid * 0.004;
+      // VHS: line jitter and a rolling tracking band
+      if (fmode > 0.5 && fmode < 1.5) { float band = 1.0 - smoothstep(0.0, 0.03, abs(fract(uv.y * 0.6 - time * 0.11) - 0.5)); uv.x += (h(vec2(floor(uv.y * 200.0), floor(time * 24.0))) - 0.5) * 0.003 + band * 0.012; }
+      float shift = ca + hurt * 0.006 + acid * 0.004 + (fmode > 0.5 && fmode < 1.5 ? 0.005 : 0.0);
       vec3 col = vec3(texture2D(tDiffuse, uv + d * shift).r, texture2D(tDiffuse, uv).g, texture2D(tDiffuse, uv - d * shift).b);
       float grey = dot(col, vec3(0.299,0.587,0.114));
       col = mix(col, vec3(grey), low * 0.65);
       col *= 1.0 - smoothstep(0.35, 0.95, r) * 0.85 * vig;
       col = mix(col, col * vec3(1.6,0.25,0.2) + vec3(0.12,0.0,0.0), hurt * smoothstep(0.15, 0.75, r));
       col = mix(col, col * vec3(0.6,1.4,0.3) + vec3(0.02,0.08,0.0), acid * smoothstep(0.1, 0.8, r));
-      col += (h(uv * 900.0) - 0.5) * grain;
+      if (fmode > 0.5 && fmode < 1.5) { col = mix(col, vec3(dot(col, vec3(0.3, 0.59, 0.11))), 0.3) * vec3(1.06, 0.97, 0.86); col *= 0.9 + 0.1 * sin(vUv.y * 1100.0); }
+      // noir: black and white, but blood and emergency light stay red
+      if (fmode > 1.5) { float g = dot(col, vec3(0.3, 0.59, 0.11)); float red = clamp((col.r - max(col.g, col.b)) * 2.5, 0.0, 1.0); col = mix(vec3(pow(g, 0.9) * 1.2), col * vec3(1.4, 0.35, 0.35), red); }
+      col += (h(uv * 900.0) - 0.5) * grain * (fmode > 0.5 && fmode < 1.5 ? 1.8 : 1.0);
       col *= 1.0 - fade;
       gl_FragColor = vec4(col, 1.0);
       // tone mapping + sRGB here instead of a separate OutputPass (one less full-screen pass)

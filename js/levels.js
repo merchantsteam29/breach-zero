@@ -1,18 +1,22 @@
-// The three handmade floors of Ardent Biolabs, Site Zero.
+// The five handmade floors of Ardent Biolabs, Site Zero, plus the survival arena.
 //
 // Map legend (one character = one 3 m cell):
 //   #  wall              .  floor            P  player start      X  lift (exit)
 //   d  door              1  BLUE door        2  RED door          3  YELLOW door
 //   b r y  keycards      a  pistol ammo      s  shotgun shells    h  medkit
-//   g  shotgun           n  audio log        V  power switch      *  finale spawn point
+//   g  shotgun           m  SMG              u  SMG magazines     n  audio log
+//   V  power switch      *  wave spawn point M  where THE HOST bursts out (finale boss)
 //   c  crate (jumpable)  t  lab table        o  cryo tube         ~  blood on the floor
 //   L  ceiling lamp      E  red emergency    k  broken (flickering) lamp
+//   !  scare trigger (each one plays the next entry of `scares`, in reading order)
+//   $  stalker trigger   Q  where the stalker appears when a $ cell is stepped on
 //   w  husk  f  crawler  B  brute  S  spitter          (lower case = awake now)
 //   W  F  U  Z  the same four, dormant: they wake when a keycard or the shotgun nearby is taken
+// Scare kinds: lightsOut, runner, body, fakeout, door.
 
 export const FLOORS = [
   {
-    name: 'SUBLEVEL 3',
+    name: 'SUBLEVEL 5',
     sub: 'Cryogenics Wing',
     fog: 0.085,
     ambient: 0x1a2430,
@@ -29,13 +33,13 @@ export const FLOORS = [
       '#o.n.o#.......#..f...#..t.t.w#',
       '###d#####d#####......#...a...#',
       '#......k......######d####d####',
-      '#.~....w......d..............#',
+      '#.~....w......d.....!........#',
       '####d######d###.....W........#',
       '#......#......#..L.....L.....#',
       '#..L...#.f....#....t.t..W..h.#',
       '#.a....#...k..#.......b......#',
       '#......#......#####1#######d##',
-      '#..h...#.~..n.#....E...#...a.#',
+      '#..h.!.#.~..n.#....E...#...a.#',
       '#......#......#........#.....#',
       '##################X###########',
     ],
@@ -44,9 +48,10 @@ export const FLOORS = [
       { from: 'Technician R. Hale — personal', text: 'If anyone finds this: the lift codes were wiped when the lockdown hit. Security keeps spare cards on every floor. Blue for the wings, red for the lift bays, yellow for reactor control. Do not go into the dark ones.' },
       { from: 'Dr. Mara Okafor — Cryo log 117', text: 'Pod six is empty. The glass is not broken. It was opened from the inside, and it was not opened by a person. We are calling the compound BLOOM in the reports now. It does not kill the host. That is the problem.' },
     ],
+    scares: ['runner', 'body'],
   },
   {
-    name: 'SUBLEVEL 2',
+    name: 'SUBLEVEL 4',
     sub: 'Biohazard Research',
     fog: 0.08,
     ambient: 0x22261c,
@@ -58,17 +63,17 @@ export const FLOORS = [
     map: [
       '################################',
       '#......#.........#.......n.....#',
-      '#..P...d....L....#.....E.......#',
+      '#..P...d..!.L....#.....E.......#',
       '#..L...#..t...t..#..o.o.o.o....#',
       '#......#..t.n.t..#.............#',
       '###d####..t...t..#..o.o.o.o..S.#',
-      '#......#..a.w....#......Z...r..#',
+      '#......#..a.w....#......Z..$r$.#',
       '#.k....#####d###########1#######',
       '#..~...........................#',
-      '#..f...........L.....w...~.....#',
+      '#..f...........L..Q..w...~.....#',
       '###d######d##########d######2###',
       '#......#......#...g.......#....#',
-      '#.L..h.#..L...#..c.....c..#..L.#',
+      '#.L..h.#..L...#..c..!..c..#..L.#',
       '#......#...f..#.....L.....#....#',
       '#..w...d......#....B......#.s..#',
       '#......#.s....#..c.....c..#....#',
@@ -77,10 +82,89 @@ export const FLOORS = [
       '############################X###',
     ],
     notes: [
-      { from: 'Security Chief D. Vance — audio log', text: 'Containment is holding on Two. I sealed the south labs with the specimen we call the Brute still inside. Whoever has the blue card: do not go in there without the shotgun from the armory crate. It took nine rounds to slow it down.' },
+      { from: 'Security Chief D. Vance — audio log', text: 'Containment is holding on Four. I sealed the south labs with the specimen we call the Brute still inside. Whoever has the blue card: do not go in there without the shotgun from the armory crate. It took nine rounds to slow it down.' },
       { from: 'Dr. Ines Ward — lab notes', text: 'The spitters are not a separate strain. They are what BLOOM does to people who were already sick. The acid sac grows from the lungs. It can reach you from across a room. Keep moving and keep cover between you.' },
-      { from: 'Dr. Mara Okafor — final log', text: 'The board approved surface evacuation for staff only. Specimens and infected personnel stay below. I watched them weld the B1 lift shut. The only way out now is the reactor-powered freight lift. Somebody has to turn the power back on.' },
+      { from: 'Dr. Mara Okafor — log 119', text: 'The board approved surface evacuation for staff only. Specimens and infected personnel stay below. I watched them weld the B1 lift shut. The only way out now is the reactor-powered freight lift. Somebody has to turn the power back on.' },
     ],
+    scares: ['lightsOut', 'fakeout'],
+  },
+  {
+    name: 'SUBLEVEL 3',
+    sub: 'Pump Station',
+    fog: 0.085,
+    ambient: 0x16252a,
+    steps: [
+      { need: 'b', text: 'Find the BLUE keycard (south-east filter room)' },
+      { need: 'r', text: 'Get the RED keycard from the north-east store' },
+      { need: 'exit', text: 'Unlock the RED lift bay (south-west) and go up' },
+    ],
+    map: [
+      '##################################',
+      '#.....#..........#..!....#.......#',
+      '#..P..#....L.....#...k...#...n...#',
+      '#.....d..c....c..d.......#.......#',
+      '#..L..#....n.....#...w...1...r...#',
+      '#.....#.a......h.#.....f.#..$$$..#',
+      '###d#######d#########d#######d####',
+      '#..Q.......k.........L.......E...#',
+      '#.~......w..............~.....w..#',
+      '###2#########d#############d######',
+      '#......#.............#...........#',
+      '#..L...#..o...L...o..#...L....E..#',
+      '#......#.............#..t.t......#',
+      '#.h....#...c.....c...#..t.t...B..#',
+      '#......#......!......#...........#',
+      '#..k...#..~...m...f..#.....b.....#',
+      '#......#...c.....c...#..w.....S..#',
+      '#....a.#.............#...........#',
+      '#......#..o..u.u...o.#.s.....F.F.#',
+      '#......#......n......#.......h...#',
+      '###X##############################',
+    ],
+    notes: [
+      { from: 'Foreman J. Petrov — work order', text: 'Pumps two and three are clogged again. Not with silt. Something soft and warm is growing up the intake pipes like coral. I cut a sample for the lab. It bled on my boots.' },
+      { from: 'Security Sgt. L. Brandt — radio', text: 'Holding the pump hall. Lost Mendez and Cho. I left the SMG on the floor by the main pump with every mag we had. If you can hear this and you are still yourself, take it. We are not coming back for it.' },
+      { from: 'Dr. Mara Okafor — log 121', text: 'There is a tall one now. It does not feed. It does not fight the others. It follows the living, floor to floor, and it is never in the vent when you look straight at it. Vance calls it the Stalker. I call it patient.' },
+    ],
+    scares: ['body', 'runner'],
+  },
+  {
+    name: 'SUBLEVEL 2',
+    sub: 'Security Wing',
+    fog: 0.08,
+    ambient: 0x1e1e26,
+    steps: [
+      { need: 'b', text: 'Find the BLUE keycard in the cell block' },
+      { need: 'r', text: 'Get the RED keycard from the Armory (blue door)' },
+      { need: 'exit', text: "Open the Warden's office (RED) and take the lift" },
+    ],
+    map: [
+      '###############################X####',
+      '#........#..........#.......#......#',
+      '#.a.s..u.#..t.t.t...#..t.t..#..L...#',
+      '#...L....#....L...n.#...!...#......#',
+      '#.u..r.h.#..t.t.t...#.n...E.#.h..n.#',
+      '#..c..c..#.w........#.......#......#',
+      '####1##########d########d######2####',
+      '#..k..........L............E.......#',
+      '#.~......f..........w....!....~....#',
+      '##########d######d############d#####',
+      '#.~#..#W.#..#.W#..#..#.#...........#',
+      '#..#..#..#..#..#..#..#.#..L.....c..#',
+      '#..L......L......L.....#...........#',
+      '#....f..........~......#.....P.....#',
+      '#.$$$..................#...........#',
+      '#..#..#..#..#..#..#..#.#..c....h...#',
+      '#.b#..#.W#..#..#Q.#..#.#.....k.....#',
+      '#..#a.#..#..#.s#..#..#.#...a.......#',
+      '####################################',
+    ],
+    notes: [
+      { from: 'Security Chief D. Vance — briefing', text: 'Effective immediately: infected staff go to the cell block, not the infirmary. Do not open a cell for any reason. If they talk to you, they are not talking to you.' },
+      { from: 'CCTV operator — handwritten', text: 'Camera nine shows the tall one standing in the cell block corridor. Camera ten shows it in the reactor stairwell. Same timestamp. I have stopped writing the times down.' },
+      { from: 'Warden E. Sato — final entry', text: 'The thing in Reactor Control is not a specimen any more. It is a nest. Every host that walks in comes out part of it. Okafor named it THE HOST. If you go up to restore power, take everything this office has. It will not be enough.' },
+    ],
+    scares: ['lightsOut', 'door'],
   },
   {
     name: 'SUBLEVEL 1',
@@ -91,6 +175,7 @@ export const FLOORS = [
       { need: 'b', text: 'Find the BLUE keycard (storage, south-east)' },
       { need: 'y', text: 'Get the YELLOW keycard from the Security office' },
       { need: 'power', text: 'Restore power in Reactor Control' },
+      { need: 'boss', text: 'KILL THE HOST' },
       { need: 'survive', text: 'SURVIVE until the freight lift arrives' },
       { need: 'exit', text: 'GET TO THE FREIGHT LIFT' },
     ],
@@ -103,17 +188,17 @@ export const FLOORS = [
       '#.....#..c.....c..#......#..S....#',
       '###d#######d#######d##############',
       '#*.....L..........w.......k.....*#',
-      '#.....~......f.........L.........#',
+      '#.....~......f.........L......!..#',
       '####d#####d#########3########d####',
       '#..............#.........#.......#',
-      '#.*..L.....*...#..o...o..#..s..a.#',
+      '#.*..L.....*...#..o.M.o..#..s..a.#',
       '#...#.....#....#....E....#.......#',
       '#..............#..t...t..#..F.F..#',
       '#......~.......#....V....#...b...#',
-      '#..............#..B...S..#..h....#',
+      '#..............#..f...S..#..h....#',
       '#...#.....#....#.........#.n..f..#',
       '#.L........L...#..o...o..#.......#',
-      '#.*....h....*..#....n....#..s.a..#',
+      '#.*....h....*..#....n....#..sua..#',
       '#..............#.........#.......#',
       '#######X##########################',
     ],
@@ -122,8 +207,41 @@ export const FLOORS = [
       { from: 'Unknown — scratched recording', text: 'They follow sound. Gunshots most of all. Sprinting is loud. Your light is louder than you think. When it goes dark, stand still and let it charge. They cannot see you in the dark as well as you think they can. Or maybe they can.' },
       { from: 'Dr. Mara Okafor — unsent', text: 'If you are hearing this, you are the last one still yourself. The surface team will not wait. Pull the breaker, get to the freight lift, and do not let anything ride up with you.' },
     ],
+    scares: ['fakeout'],
+    finale: true,
   },
 ];
+
+// Survival mode: one open arena, endless waves from the * points. Items come back between waves.
+export const ARENA = {
+  name: 'CONTAINMENT HALL',
+  sub: 'Survival',
+  fog: 0.07,
+  ambient: 0x221a1a,
+  steps: [{ need: 'never', text: 'Survive' }],
+  map: [
+    '##########################',
+    '#*..........*...........*#',
+    '#..L......L......L.....L.#',
+    '#....c.......a.......c...#',
+    '#.......#..........#.....#',
+    '#..h....#....o.....#..s..#',
+    '#........................#',
+    '#*...c......k.......c...*#',
+    '#..........P.............#',
+    '#..L.........~.......L...#',
+    '#*...c...............c..*#',
+    '#........................#',
+    '#..u....#....o.....#..a..#',
+    '#.......#..........#.....#',
+    '#....c.......s.......c...#',
+    '#..L......L......L.....L.#',
+    '#*..........*...........*#',
+    '##########################',
+  ],
+  notes: [],
+  scares: [],
+};
 
 export const DIFFICULTY = {
   easy: { label: 'Easy', dmg: 0.55, hp: 0.8, speed: 0.9, ammo: 1.6, sight: 0.8, waves: 0.7 },

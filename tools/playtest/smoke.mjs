@@ -47,14 +47,23 @@ await shot('08-floor2');
 await ev(`__bz.tp(19, 12); __bz.look(-Math.PI/2); return 1;`); await sleep(1200);
 await shot('09-brute-room');
 
-// floor 3 + finale
-await ev(`__bz.finishFloor(); return 1;`); await sleep(4000);
+// floors 3 and 4, then the reactor: breaker, THE HOST, lift countdown
+const waitFor = async (js, ms = 60000) => { const t = Date.now(); while (Date.now() - t < ms) { if (await ev(js)) return true; await sleep(300); } return false; };
+for (const f of [2, 3]) {
+  await ev(`__bz.finishFloor(); return 1;`); await waitFor(`return __bz.G.floor === ${f} && __bz.G.state === 'play'`);
+  info = JSON.parse(await ev(`return JSON.stringify(__bz.info())`));
+  check(info.floor === f, 'reached floor ' + (f + 1)); await shot('10-floor' + (f + 1));
+}
+await ev(`__bz.finishFloor(); return 1;`); await waitFor(`return __bz.G.floor === 4 && __bz.G.state === 'play'`);
 info = JSON.parse(await ev(`return JSON.stringify(__bz.info())`));
-check(info.floor === 2, 'reached floor 3');
-await shot('10-floor3');
+check(info.floor === 4, 'reached floor 5 (reactor)');
 await ev(`__bz.keys('b','y'); __bz.tp(20, 13); __bz.look(Math.PI); return 1;`); await sleep(800);
-await ev(`__bz.powerOn(); return 1;`); await sleep(4000);
-await shot('11-finale');
+await ev(`__bz.powerOn(); return 1;`);
+check(await waitFor(`return !!__bz.G.boss`), 'THE HOST appears after the breaker');
+await sleep(1500); await shot('11-boss');
+check(!(await ev(`return document.getElementById('hBoss').hidden`)), 'boss health bar shown');
+await ev(`const b = __bz.G.boss; __bz.G.enemies.damage(b, 1e6, new b.pos.constructor(0, 0, 1)); return 1;`);
+check(await waitFor(`return __bz.G.bossDead && !!__bz.G.finale`), 'killing THE HOST calls the lift');
 await ev(`__bz.G.finale.t = 0.01; return 1;`); await sleep(2500);
 info = JSON.parse(await ev(`return JSON.stringify(__bz.info())`));
 console.log('finale', JSON.stringify(info));

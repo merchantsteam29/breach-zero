@@ -34,7 +34,8 @@ export function buildWorld(scene, fi, F) {
 
   const world = {
     fi, F, grid, W, D, group, doors: [], items: [], fixtures: [], spawns: [], waveSpots: [], obst: new Map(),
-    start: null, exit: null, power: null, liftOpen: fi < 2, notesTaken: 0, dynamic: [],
+    start: null, exit: null, power: null, liftOpen: !F.finale, notesTaken: 0, dynamic: [],
+    scares: [], stalkerCells: new Set(), stalkerSpawn: null, bossSpot: null,
   };
 
   // ---------- materials ----------
@@ -127,6 +128,10 @@ export function buildWorld(scene, fi, F) {
   for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
     const c = at(x, z), X = cx(x), Z = cx(z);
     if (c === 'P') world.start = { x: X, z: Z };
+    else if (c === '!') world.scares.push({ x: X, z: Z, cx: x, cz: z, kind: (F.scares || [])[world.scares.length] || 'fakeout', done: false });
+    else if (c === '$') world.stalkerCells.add(x + ',' + z);
+    else if (c === 'Q') world.stalkerSpawn = { x: X, z: Z };
+    else if (c === 'M') world.bossSpot = { x: X, z: Z };
     else if (c === '*') world.waveSpots.push({ x: X, z: Z });
     else if (c === 'c') {
       const h = 0.95, s = 1.7, ry = (rnd() - 0.5) * 0.3;
@@ -170,6 +175,8 @@ export function buildWorld(scene, fi, F) {
     if (c === 's') addItem(world, 'shells', X, Z);
     if (c === 'h') addItem(world, 'medkit', X, Z);
     if (c === 'g') addItem(world, 'shotgun', X, Z);
+    if (c === 'm') addItem(world, 'smg', X, Z);
+    if (c === 'u') addItem(world, 'smgammo', X, Z);
     if (c === 'n') addItem(world, 'note', X, Z, world.items.filter((i) => i.type === 'note').length);
     if (c === 'V') { world.power = buildSwitch(world, X, Z); world.obst.set(x + ',' + z, { x0: X - 0.45, x1: X + 0.45, z0: Z - 0.45, z1: Z + 0.45, h: 99 }); }
     if ('d123'.includes(c)) world.doors.push(buildDoor(world, x, z, c));
@@ -373,8 +380,8 @@ function addItem(world, type, X, Z, extra) {
     const halo = new THREE.Mesh(new THREE.RingGeometry(0.25, 0.32, 24), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
     halo.rotation.x = -Math.PI / 2; halo.position.y = -0.32; g.add(halo);
     y = 1.0;
-  } else if (type === 'ammo' || type === 'shells') {
-    const col = type === 'ammo' ? 0xb89a2a : 0xa52a1a;
+  } else if (type === 'ammo' || type === 'shells' || type === 'smgammo') {
+    const col = type === 'ammo' ? 0xb89a2a : type === 'smgammo' ? 0x3a8ad0 : 0xa52a1a;
     const b = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.22, 0.26), new THREE.MeshStandardMaterial({ color: 0x2d332a, roughness: 0.7, metalness: 0.4 })); g.add(b);
     const s = new THREE.Mesh(new THREE.BoxGeometry(0.41, 0.06, 0.27), new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.5 })); g.add(s);
     y = 0.12; bob = false;
@@ -383,6 +390,14 @@ function addItem(world, type, X, Z, extra) {
     const cross = new THREE.MeshStandardMaterial({ color: 0xcc1111, emissive: 0xff1a1a, emissiveIntensity: 0.9 });
     const c1 = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.26, 0.06), cross), c2 = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.26, 0.2), cross);
     g.add(c1, c2); y = 0.13; bob = false;
+  } else if (type === 'smg') {
+    const m = new THREE.MeshStandardMaterial({ color: 0x23272a, roughness: 0.45, metalness: 0.75 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.11, 0.07), m); g.add(body);
+    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.2, 0.04), m); mag.position.set(0.05, -0.13, 0); mag.rotation.z = 0.15; g.add(mag);
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.2, 8), m); bar.rotation.z = Math.PI / 2; bar.position.x = 0.34; g.add(bar);
+    const glow = new THREE.Mesh(new THREE.RingGeometry(0.45, 0.55, 24), new THREE.MeshBasicMaterial({ color: 0x55aaff, transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false }));
+    glow.rotation.x = -Math.PI / 2; glow.position.y = -0.5; g.add(glow);
+    y = 0.6;
   } else if (type === 'shotgun') {
     const m = new THREE.MeshStandardMaterial({ color: 0x24282a, roughness: 0.4, metalness: 0.8 });
     const b = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.9, 8), m); b.rotation.z = Math.PI / 2; g.add(b);
