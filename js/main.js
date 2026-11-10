@@ -995,6 +995,18 @@ try {
   if (/swiftshader|llvmpipe|software/i.test(name) && !TEST) { $('gpuWarn').hidden = false; $('gpuWarnTitle').hidden = false; }
 } catch {}
 
+// ---------- install as an app (Chrome / Edge / Android; iPhone: Share > Add to Home Screen) ----------
+let installEvt = null;
+addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; $('bInstall').hidden = false; });
+addEventListener('appinstalled', () => { installEvt = null; $('bInstall').hidden = true; });
+$('bInstall').onclick = async () => {
+  if (!installEvt) return;
+  installEvt.prompt();
+  await installEvt.userChoice.catch(() => {});
+  installEvt = null; $('bInstall').hidden = true;
+};
+if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !TEST) navigator.serviceWorker.register('sw.js').catch(() => {});
+
 // ---------- boot ----------
 applyQuality(); applySettings(); applyExtras();
 loadFloor(0, { menu: true });

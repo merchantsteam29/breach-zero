@@ -6,6 +6,8 @@ A dark first-person horror shooter for the browser. You are trapped five floors 
 
 ![BREACH: ZERO title screen](cover.png)
 
+**Download it as an app:** open the link in Chrome or Edge and press **Install as an app** on the title screen (or the install icon in the address bar). It gets its own desktop / Start menu icon, opens fullscreen, and works offline once it has loaded. On iPhone or iPad: Share → Add to Home Screen.
+
 ## Controls
 
 | Action | Keyboard & mouse | Controller |
