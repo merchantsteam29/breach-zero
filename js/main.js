@@ -298,7 +298,12 @@ function showFloorCard(F, fi, arena) {
 function warmShaders() {
   const extra = G.enemies.warmGroup(); scene.add(extra);
   const hidden = []; scene.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
+  // with post-processing the scene is drawn into the composer's texture (linear colour, no tone mapping), and three.js
+  // compiles a different shader for that than for the screen, so compile for where it will really be drawn
+  const prev = renderer.getRenderTarget();
+  renderer.setRenderTarget(post ? post.comp.readBuffer : null);
   try { renderer.compile(scene, camera); renderer.compile(vmScene, vmCam); } catch {}
+  renderer.setRenderTarget(prev);
   for (const o of hidden) o.visible = false;
   scene.remove(extra);
 }
