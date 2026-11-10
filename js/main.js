@@ -1041,3 +1041,12 @@ if (TEST) {
     nearest: (type) => { let b = null, bd = 1e9; for (const e of G.enemies.list) { if (e.state === 'dead' || e.state === 'dormant' || e.state === 'decoy' || (type && e.type !== type)) continue; const d = e.pos.distanceTo(G.player.pos); if (d < bd) { bd = d; b = e; } } return b; },
   };
 }
+
+// "Download for PC": the Game Library app for Windows (every game in one place). Hidden on phones
+// and tablets, and inside the app itself.
+(() => {
+  const b = document.getElementById('pcDownload'); if (!b) return;
+  const ua = navigator.userAgent;
+  if (/Electron|Android|iPhone|iPad|iPod|Mobile/i.test(ua) || (/Mac/.test(navigator.platform) && navigator.maxTouchPoints > 1)) { b.style.display = 'none'; return; }
+  b.addEventListener('click', (e) => { e.stopPropagation(); b.blur(); location.href = 'https://github.com/merchantsteam29/GameLibrary/releases/latest/download/GameLibrary.exe'; });
+})();
