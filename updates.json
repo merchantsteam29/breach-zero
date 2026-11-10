@@ -1,0 +1,37 @@
+[
+  {
+    "version": "2.0",
+    "date": "2026-11-09",
+    "title": "Five floors down",
+    "notes": [
+      "Two new floors before the reactor: the flooded Pump Station and the overrun Security Wing.",
+      "The Stalker: something tall, pale and unkillable hunts you in set scenes on floors 2 to 4. Run.",
+      "THE HOST: pull the reactor breaker and the lab's nest wakes up. Kill it to call the freight lift.",
+      "New weapons: an SMG, and a crowbar that's always with you (quiet, no ammo, quick bash on V / RB).",
+      "Scripted scares: dying lights, a runner in the dark, a body that wasn't there, footsteps, a door slammed shut.",
+      "Survival mode: endless waves in the Containment Hall, with THE HOST every fifth wave.",
+      "Records screen and four unlockable extras: VHS filter, noir filter, infinite flashlight, golden guns.",
+      "Controller support (wheels and joysticks are ignored so the view never spins on its own).",
+      "Menus remade as a CRT security terminal; the HUD is now a wrist bio-monitor with a live heartbeat."
+    ]
+  },
+  {
+    "version": "1.1",
+    "date": "2026-11-09",
+    "title": "Performance update",
+    "notes": [
+      "Far fewer draw calls: monsters, walls, decals and guns are batched together.",
+      "Cheaper glow and post-processing, one less light on every pixel, and a pixel cap for big screens.",
+      "New Auto resolution setting lowers the render resolution when the frame rate drops.",
+      "Shaders are prepared when a floor loads, so new monsters no longer cause a hitch."
+    ]
+  },
+  {
+    "version": "1.0",
+    "date": "2026-11-08",
+    "title": "Release",
+    "notes": [
+      "Three floors under Ardent Biolabs, four monster types, pistol and shotgun, nine audio logs and the reactor finale."
+    ]
+  }
+]
