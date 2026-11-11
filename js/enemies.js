@@ -10,6 +10,8 @@ export const TYPES = {
   crawler: { hp: 50,  walk: 1.5, run: 6.6, dmg: 9,  reach: 1.5, windup: 0.22, cd: 0.75, r: 0.36 },
   brute:   { hp: 650, walk: 0.9, run: 3.3, dmg: 32, reach: 2.4, windup: 0.75, cd: 1.5, r: 0.72 },
   spitter: { hp: 80,  walk: 1.0, run: 3.4, dmg: 12, reach: 1.6, windup: 0.5, cd: 2.2, r: 0.38 },
+  // swollen with acid: walks up to you and bursts (or bursts when it dies); the blast hurts its own kind too
+  burster: { hp: 70,  walk: 0.8, run: 2.9, dmg: 36, reach: 2.3, windup: 0.7, cd: 99, r: 0.5, burst: true },
   // set-piece hunter: cannot be killed, only staggered; leaves when its scene ends
   stalker: { hp: 1e9, walk: 1.4, run: 5.4, dmg: 34, reach: 2.1, windup: 0.32, cd: 0.9, r: 0.42, stalker: true },
   // THE HOST: reactor boss
@@ -172,6 +174,13 @@ function buildRaw(type) {
   if (type === 'brute') return humanoid({ scale: 1.4, leg: 0.42, limbR: 0.1, tw: 0.7, th: 0.62, arm: 0.48, headR: 0.14, neck: 0.04, bigArm: true, bulk: true, growths: 10, legMat: mats().skinDark });
   if (type === 'stalker') { const M = mats(); return humanoid({ scale: 1.22, leg: 0.6, limbR: 0.042, tw: 0.34, th: 0.62, arm: 0.66, headR: 0.12, neck: 0.32, growths: 0, skin: M.pale, skinDark: M.paleDark, eye: M.eyeRed, legMat: M.paleDark }); }
   if (type === 'host') return humanoid({ scale: 1.5, leg: 0.42, limbR: 0.12, tw: 0.8, th: 0.7, arm: 0.52, headR: 0.15, neck: 0.05, bigBoth: true, bulk: true, growths: 22, sac: true, backSacs: 4, legMat: mats().skinDark });
+  if (type === 'burster') {
+    const M = mats(), m = humanoid({ scale: 1.05, leg: 0.4, limbR: 0.05, tw: 0.62, th: 0.5, arm: 0.34, headR: 0.11, neck: 0.06, bulk: true, growths: 9 });
+    const belly = ball(0.34, M.sac, 1.15, 1, 1.05); belly.position.set(0, 0.42 * 0.5, 0.2); m.torso.add(belly);
+    m.sac = belly; m.belly = belly;
+    m.hits.push({ o: belly, r: 0.38 * m.s, head: true }); // the sac is the weak spot
+    return m;
+  }
   if (type === 'spitter') return humanoid({ leg: 0.46, limbR: 0.048, tw: 0.38, th: 0.48, arm: 0.38, headR: 0.13, neck: 0.3, sac: true, growths: 2 });
   return humanoid({ leg: 0.45, limbR: 0.05, tw: 0.42, th: 0.52, arm: 0.4, headR: 0.13, neck: 0.12, growths: 4 });
 }
@@ -271,7 +280,7 @@ export class Enemies {
       if (Math.random() < 0.25) A.pain('stalker', e.pos.clone().setY(2));
       return false;
     }
-    e.hp -= amount; e.flinch = 1; this.alert(e);
+    e.hp -= amount; e.flinch = 1; this.alert(e); e.lastKind = kind;
     if (heavy && e.type !== 'brute' && !e.T.boss) { e.stagger = 0.35; e.vel.addScaledVector(dir, 3); }
     if (e.T.boss) this.G.onBossHit?.(e);
     if (e.hp <= 0) { this.kill(e, dir); return true; }
@@ -279,10 +288,30 @@ export class Enemies {
     return false;
   }
 
+  // a Burster pops: acid on everything around it (you, and its own kind)
+  explode(e) {
+    if (e.exploded) return; e.exploded = true;
+    const G = this.G, P = G.player, D = G.diff, R = 3.6, at = e.pos.clone().setY(e.y + 1.0);
+    A.burst(at); G.shake(0.55);
+    for (let i = 0; i < 4; i++) G.fx.splash(at.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.2, Math.random() * 0.6, (Math.random() - 0.5) * 1.2)), 0x9dff2a);
+    G.fx.blood(at, new THREE.Vector3(0, 1, 0), 24);
+    const pd = Math.hypot(P.pos.x - e.pos.x, P.pos.z - e.pos.z);
+    if (P.alive && pd < R && G.world.los(e.pos.x, e.pos.z, P.pos.x, P.pos.z)) P.damage(e.T.dmg * D.dmg * (1 - pd / R * 0.7), e.pos, 6, 'acid');
+    for (const o of this.list) {
+      if (o === e || o.state === 'dead' || o.state === 'dormant' || o.decoy || o.gone || o.T.stalker) continue;
+      const d = Math.hypot(o.pos.x - e.pos.x, o.pos.z - e.pos.z); if (d > R) continue;
+      const dir = new THREE.Vector3(o.pos.x - e.pos.x, 0, o.pos.z - e.pos.z).normalize();
+      this.damage(o, 130 * (1 - d / R * 0.6), dir, false, true, 'burst');
+    }
+    if (e.state !== 'dead') { e.hp = 0; this.kill(e, new THREE.Vector3(0, 0, 1)); }
+    this.vanish(e); // nothing left to fall over
+  }
+
   kill(e, dir) {
     e.state = 'dead'; e.deadT = 0; e.fallDir = Math.atan2(dir.x, dir.z) - e.yaw; A.death(e.type, e.pos.clone().setY(1.2));
     this.G.onKill(e);
     if (e.T.boss) this.G.onBossDead?.(e);
+    if (e.T.burst && !e.exploded) setTimeout(() => this.explode(e), 120);
   }
 
   update(dt) {
@@ -298,6 +327,11 @@ export class Enemies {
       if (e.state === 'dead') { this.animDead(e, dt); continue; }
       if (e.state === 'decoy') { this.updateDecoy(e, dt); continue; }
       const dx = pp.x - e.pos.x, dz = pp.z - e.pos.z, dist = Math.hypot(dx, dz);
+      if (e.burnT > 0) { // on fire: keeps hurting, flames on the body, panics a little
+        e.burnT -= dt; e.burnTick = (e.burnTick || 0) - dt;
+        if (Math.random() < dt * 30) G.fx.emit(G.fx.glow, e.pos.clone().setY(e.y + 0.4 + Math.random() * 1.3), 1, { col: [1, 0.4 + Math.random() * 0.3, 0.05], speed: 0.8, spread: 1, life: 0.5, grav: -3 });
+        if (e.burnTick <= 0) { e.burnTick = 0.25; if (this.damage(e, 4.5, new THREE.Vector3(0, 0, 1), false, false, 'fire')) continue; }
+      }
       e.cd -= dt; e.specialCd -= dt; e.flinch = Math.max(0, e.flinch - dt * 4); e.stagger -= dt; e.twitch = Math.max(0, e.twitch - dt);
 
       // --- perception (5x a second) ---
@@ -350,13 +384,15 @@ export class Enemies {
       }
 
       // --- specials ---
-      if (e.state === 'hunt' && e.see && e.stagger <= 0 && !e.mode && e.specialCd <= 0 && P.alive) {
+      if (e.state === 'hunt' && e.see && e.stagger <= 0 && !e.mode && (e.specialCd <= 0 || e.T.burst) && P.alive) {
         if (e.type === 'crawler' && dist > 2.5 && dist < 7) {
           e.mode = 'pounce'; e.modeT = 0.75; e.vy = 4.2; e.y = 0.01; e.specialCd = 2.5 + Math.random() * 2;
           e.vel.set(dx / dist * 9.5, 0, dz / dist * 9.5); A.attack('crawler', e.pos.clone()); e.hitDone = false;
         } else if (e.type === 'brute' && dist > 5 && dist < 16) {
           e.mode = 'windcharge'; e.modeT = 0.8; e.specialCd = 6 + Math.random() * 3; A.shriek('brute', e.pos.clone().setY(2));
           G.shake(0.3);
+        } else if (e.T.burst && dist < T.reach) {
+          e.mode = 'swell'; e.modeT = T.windup; e.specialCd = 99; A.swell(e.pos.clone().setY(1.2));
         } else if (e.type === 'spitter' && dist > 3 && dist < 20) {
           e.mode = 'spit'; e.modeT = 0.6; e.specialCd = T.cd + Math.random();
         } else if (T.boss && dist < 22) {
@@ -390,6 +426,10 @@ export class Enemies {
         } else if (e.mode === 'summon') {
           face = Math.atan2(dx, dz); speed = 0;
           if (e.modeT <= 0) { e.mode = null; G.onBossSummon?.(e); }
+        } else if (e.mode === 'swell') {
+          face = Math.atan2(dx, dz); speed = 0;
+          if (m.belly) m.belly.scale.setScalar(1 + (1 - e.modeT / T.windup) * 0.6 + Math.sin(e.modeT * 60) * 0.04);
+          if (e.modeT <= 0) { e.mode = null; this.explode(e); continue; }
         } else if (e.mode === 'spit') {
           face = Math.atan2(dx, dz); speed = 0;
           if (m.sac) m.sac.scale.setScalar(1.2 + (0.6 - e.modeT) * 1.2);
@@ -398,7 +438,7 @@ export class Enemies {
       }
 
       // --- melee ---
-      if (e.state === 'hunt' && !e.mode && e.stagger <= 0 && P.alive) {
+      if (e.state === 'hunt' && !e.mode && e.stagger <= 0 && P.alive && !T.burst) {
         if (e.atk > 0) {
           e.atk -= dt;
           if (e.atk <= 0) {

@@ -223,7 +223,14 @@
 (function () {
   if (!window.GameSync) return;
   var idle = function () { var t = document.getElementById("sTitle"); return !!t && t.getClientRects().length > 0 && getComputedStyle(t).visibility !== 'hidden'; };
-  GameSync.init({ game: "breachzero", keys: [{ match: 'bz_records' }, { match: 'bz_save' }], idle: idle });
+  GameSync.init({ game: "breachzero", ach: [
+    { id: 'escape', name: 'Breach contained', desc: 'Escape the lab', test: (g) => ((g('bz_records') || {}).escapes || 0) > 0 },
+    { id: 'nightmare', name: 'Nightmare survivor', desc: 'Escape on Nightmare', test: (g) => !!(g('bz_records') || {}).nightmare },
+    { id: 'boss', name: 'Big game', desc: 'Kill a boss', test: (g) => ((g('bz_records') || {}).bossKills || 0) > 0 },
+    { id: 'surv10', name: 'Holding the line', desc: 'Reach wave 10 in Survival', test: (g) => ((g('bz_records') || {}).survWave || 0) >= 10 },
+    { id: 'kills500', name: 'Exterminator', desc: '500 kills in total', test: (g) => ((g('bz_records') || {}).kills || 0) >= 500 },
+    { id: 'burn', name: 'Scorched', desc: 'Burn 25 things with the incinerator', test: (g) => ((g('bz_records') || {}).burns || 0) >= 25 }
+  ], keys: [{ match: 'bz_records' }, { match: 'bz_save' }], idle: idle });
   document.addEventListener('click', function (e) { if (e.target.closest && e.target.closest('#syncBtn')) { e.stopPropagation(); GameSync.open(); } }, true);
 })();
 </script>

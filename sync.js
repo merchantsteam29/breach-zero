@@ -77,7 +77,7 @@
 
   // ---------- state ----------
   let cfg = null, acc = jget(ACC, null), meta = {}, last = {}, relay = [], status = 'off', lastSync = 0, pending = false, pushT = 0, gotRemote = false, onChange = [];
-  const ruleFor = (k) => cfg && cfg.keys.find((r) => (r.match instanceof RegExp ? r.match.test(k) : k === r.match || (typeof r.match === 'string' && r.match.endsWith('*') && k.startsWith(r.match.slice(0, -1)))));
+  const ruleFor = (k) => cfg && (k === 'gamesach.' + cfg.game ? { mode: 'max' } : cfg.keys.find((r) => (r.match instanceof RegExp ? r.match.test(k) : k === r.match || (typeof r.match === 'string' && r.match.endsWith('*') && k.startsWith(r.match.slice(0, -1))))));
   const syncedKeys = () => ls.keys().filter((k) => ruleFor(k) && !k.startsWith('gamesync.'));
   const setStatus = (s) => { status = s; for (const f of onChange) f(); };
 
@@ -181,6 +181,10 @@
 .gs-qr{display:block;width:150px;height:150px;margin:6px auto;background:#fff;padding:6px;border-radius:6px}
 .gs-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;background:#777}.gs-dot.on{background:#4caf50}.gs-dot.connecting{background:#e0b030}.gs-dot.offline{background:#e05030}
 .gs-note{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:2147483001;background:#17181c;color:#eee;border:1px solid #3a3d46;border-radius:10px;padding:10px 14px;font:14px system-ui,sans-serif;display:flex;gap:12px;align-items:center;box-shadow:0 8px 30px rgba(0,0,0,.5);max-width:calc(100vw - 32px)}
+.gs-ach{position:fixed;right:18px;top:18px;z-index:2147483002;background:#1b1a14;border:1px solid #c9a227;border-radius:12px;padding:10px 14px;color:#f3e7c0;font:14px system-ui,sans-serif;display:grid;gap:2px;max-width:min(320px,calc(100vw - 36px));box-shadow:0 10px 30px rgba(0,0,0,.55);transform:translateX(130%);transition:transform .35s ease}
+.gs-ach.show{transform:none}.gs-ach b{color:#ffd65a;font-size:15px}.gs-ach span{color:#cfc7a8}
+.gs-lb{margin:8px 0;padding-left:26px}.gs-lb li{display:flex;gap:10px;align-items:baseline;padding:4px 0;border-bottom:1px solid #2a2c33}.gs-lb li span{flex:1}.gs-lb li b{color:#ffd65a}.gs-lb li small{color:#9a9ca4;font-size:12px}.gs-lb li.me span{color:#8fb4ff;font-weight:700}
+.gs-name{font-size:15px!important;width:60%!important;display:inline-block;margin:0 0 0 6px!important;padding:5px 8px!important;text-transform:none!important}
 .gs-note button{font:600 13px system-ui,sans-serif;padding:6px 10px;border-radius:7px;border:0;background:#3b6cf0;color:#fff;cursor:pointer}`;
   let styled = false;
   const style = () => { if (styled) return; styled = true; const s = document.createElement('style'); s.textContent = CSS; document.head.appendChild(s); };
@@ -264,6 +268,110 @@
     // watch for progress changes (the games write storage directly)
     setInterval(() => { if (!acc || !relay.length) return; const before = JSON.stringify(meta); snapshot(); if (JSON.stringify(meta) !== before) schedulePush(2000); }, 4000);
     document.addEventListener('visibilitychange', () => { if (document.hidden && acc) publish().catch(() => {}); });
+    // achievements: rules that read the game's saves are checked now and every few seconds
+    if (cfg.ach && cfg.ach.length) { setTimeout(() => checkAch(true), 1500); setInterval(() => checkAch(false), 3000); }
+  }
+
+  // ---------- achievements ----------
+  // Stored per game in 'gamesach.<game>' = { id: { n: name, d: description, t: when } } (synced, and read by the
+  // Game Library's Profile page). A rule's `test(get)` gets parsed saves: get('some-key') -> value or null.
+  const achKey = () => 'gamesach.' + cfg.game;
+  const getJ = (k) => { const v = ls.get(k); if (v == null) return null; try { return JSON.parse(v); } catch { return v; } };
+  function unlock(id, quiet) {
+    if (!cfg || !cfg.ach) return false;
+    const a = cfg.ach.find((x) => x.id === id); if (!a) return false;
+    const got = jget(achKey(), {}); if (got[id]) return false;
+    got[id] = { n: a.name, d: a.desc, t: Date.now() }; jset(achKey(), got);
+    if (!quiet) achToast(a);
+    return true;
+  }
+  function checkAch(first) {
+    const got = jget(achKey(), {}), fresh = [];
+    for (const a of cfg.ach) { if (got[a.id] || !a.test) continue; let ok = false; try { ok = !!a.test(getJ); } catch { /* bad save */ } if (ok && unlock(a.id, true)) fresh.push(a); }
+    if (!fresh.length) return;
+    if (first && fresh.length > 1) note('🏆 ' + fresh.length + ' achievements from your progress so far');
+    else for (const a of fresh) achToast(a);
+  }
+  let achQ = [], achBusy = false;
+  function achToast(a) {
+    achQ.push(a); if (achBusy) return; achBusy = true; style();
+    const next = () => {
+      const x = achQ.shift(); if (!x) { achBusy = false; return; }
+      const el = document.createElement('div'); el.className = 'gs-ach';
+      el.innerHTML = '<b>🏆 ' + escH(x.name) + '</b><span>' + escH(x.desc || '') + '</span>';
+      document.body.appendChild(el); setTimeout(() => el.classList.add('show'), 20);
+      setTimeout(() => { el.classList.remove('show'); setTimeout(() => { el.remove(); next(); }, 400); }, 3600);
+    };
+    next();
+  }
+  const escH = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+  // ---------- leaderboards (daily challenges) ----------
+  // Each player's best for a board is a retained message at mmgames/v1/lb/<game>/<board>/<player>. Public and
+  // unsigned (it's for friends, not a contest). Names are shared by every game: 'gamesync.name'.
+  const LB = 'mmgames/v1/lb/';
+  const pid = () => { let p = ls.get('gamesync.pid'); if (!p) { p = hex(crypto.getRandomValues(new Uint8Array(8))); ls.set('gamesync.pid', p); } return p; };
+  const myName = () => (ls.get('gamesync.name') || '').slice(0, 16);
+  let lbP = null;
+  function lbConnect() {
+    if (lbP) return lbP;
+    lbP = loadLib().then((mqtt) => BROKERS.map((url) => { const c = mqtt.connect(url, { clientId: 'lb-' + Math.random().toString(36).slice(2, 12), clean: true, reconnectPeriod: 8000, connectTimeout: 9000 }); c.on('error', () => {}); return c; }));
+    lbP.catch(() => { lbP = null; });
+    return lbP;
+  }
+  async function lbPost(board, score, info) {
+    const best = Number(ls.get('gamesync.lb.' + cfg.game + '.' + board)) || 0;
+    if (!(score > best) || !myName()) return false;
+    ls.set('gamesync.lb.' + cfg.game + '.' + board, String(score));
+    const clients = await lbConnect();
+    const body = JSON.stringify({ n: myName(), s: score, i: String(info || '').slice(0, 40), t: Date.now() });
+    const topic = LB + cfg.game + '/' + board + '/' + pid();
+    const send = (c) => c.publish(topic, body, { qos: 1, retain: true });
+    for (const c of clients) { if (c.connected) send(c); else c.once('connect', () => send(c)); }
+    return true;
+  }
+  async function lbTop(board, n = 10) {
+    const clients = await lbConnect();
+    const topic = LB + cfg.game + '/' + board + '/+', rows = new Map();
+    const onMsg = (t, msg) => {
+      if (!t.startsWith(LB + cfg.game + '/' + board + '/')) return;
+      try { const r = JSON.parse(new TextDecoder().decode(msg)); const s = Number(r.s); if (!Number.isFinite(s) || s <= 0 || s > 1e9) return;
+        const who = t.slice(t.lastIndexOf('/') + 1), prev = rows.get(who); if (!prev || s > prev.s) rows.set(who, { n: String(r.n || '?').slice(0, 16), s, i: String(r.i || '').slice(0, 40), me: who === pid() }); } catch { /* junk */ }
+    };
+    for (const c of clients) { c.on('message', onMsg); c.subscribe(topic); }
+    await new Promise((r) => setTimeout(r, 2600));
+    for (const c of clients) { c.unsubscribe(topic); c.removeListener('message', onMsg); }
+    return [...rows.values()].sort((a, b) => b.s - a.s).slice(0, n);
+  }
+  // The board panel: today's top 10, and a name box (your score is posted once you have a name).
+  function board(boardId, title, mine) {
+    style();
+    document.querySelector('.gs-wrap')?.remove();
+    const w = document.createElement('div'); w.className = 'gs-wrap';
+    const box = document.createElement('div'); box.className = 'gs-box'; w.appendChild(box);
+    const close = () => { w.remove(); document.removeEventListener('keydown', esc, true); };
+    const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); close(); } };
+    document.addEventListener('keydown', esc, true);
+    w.addEventListener('click', (e) => { if (e.target === w) close(); });
+    const draw = (rows, msg) => {
+      box.innerHTML = `<h2>🏆 ${escH(title)}</h2>${msg ? `<p class="gs-small">${escH(msg)}</p>` : ''}
+        ${rows ? (rows.length ? `<ol class="gs-lb">${rows.map((r) => `<li class="${r.me ? 'me' : ''}"><span>${escH(r.n)}</span><b>${Math.floor(r.s).toLocaleString()}</b>${r.i ? `<small>${escH(r.i)}</small>` : ''}</li>`).join('')}</ol>` : '<p>No scores yet today. Be the first.</p>') : '<p>Loading today’s scores…</p>'}
+        <p class="gs-small">Your name on the boards (every game): <input class="gs-input gs-name" maxlength="16" value="${escH(myName())}" placeholder="Name"></p>
+        <div class="gs-row"><button class="gs-main" data-a="save">Save name</button><button data-a="close">Close</button></div>`;
+      const inp = box.querySelector('.gs-name');
+      inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') box.querySelector('[data-a=save]').click(); });
+      inp.addEventListener('keyup', (e) => e.stopPropagation());
+      box.querySelector('[data-a=close]').onclick = close;
+      box.querySelector('[data-a=save]').onclick = async () => {
+        const v = inp.value.trim().replace(/[^\w .\-'!?]/g, '').slice(0, 16); if (!v) return;
+        ls.set('gamesync.name', v);
+        if (mine && mine.score > 0) await lbPost(boardId, mine.score, mine.info).catch(() => {});
+        load('Saved. Updating…');
+      };
+    };
+    const load = async (msg) => { draw(null, msg); try { const rows = await lbTop(boardId); draw(rows, myName() ? '' : 'Pick a name to put your score on the board.'); } catch { draw([], 'Couldn’t reach the scoreboard. Check your connection.'); } };
+    document.body.appendChild(w);
+    (async () => { if (mine && mine.score > 0 && myName()) await lbPost(boardId, mine.score, mine.info).catch(() => {}); load(); })();
   }
 
   // ---------- QR codes (from Trigger Happy's qr.js: byte mode, level M, versions 1-10) ----------
@@ -488,5 +596,6 @@
   }
 
 
-  window.GameSync = { init, open: panel, get on() { return !!acc; }, get status() { return status; } };
+  window.GameSync = { init, open: panel, get on() { return !!acc; }, get status() { return status; },
+    unlock: (id) => unlock(id), board, postScore: (b, s, i) => lbPost(b, s, i).catch(() => false) };
 })();

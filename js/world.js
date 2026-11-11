@@ -10,7 +10,7 @@ export const H = 3.2;    // ceiling height (m)
 const KEYCOL = { b: 0x2f7bff, r: 0xff2a2a, y: 0xffc21a };
 const DOORKEY = { 1: 'b', 2: 'r', 3: 'y' };
 export const KEYNAME = { b: 'BLUE', r: 'RED', y: 'YELLOW' };
-const ENEMY = { w: 'husk', f: 'crawler', B: 'brute', S: 'spitter', W: 'husk', F: 'crawler', U: 'brute', Z: 'spitter' };
+const ENEMY = { w: 'husk', f: 'crawler', B: 'brute', S: 'spitter', W: 'husk', F: 'crawler', U: 'brute', Z: 'spitter', q: 'burster' };
 
 let TEX = null;
 function textures() {
@@ -177,6 +177,8 @@ export function buildWorld(scene, fi, F) {
     if (c === 'g') addItem(world, 'shotgun', X, Z);
     if (c === 'm') addItem(world, 'smg', X, Z);
     if (c === 'u') addItem(world, 'smgammo', X, Z);
+    if (c === 'i') addItem(world, 'incin', X, Z);
+    if (c === 'j') addItem(world, 'fuel', X, Z);
     if (c === 'n') addItem(world, 'note', X, Z, world.items.filter((i) => i.type === 'note').length);
     if (c === 'V') { world.power = buildSwitch(world, X, Z); world.obst.set(x + ',' + z, { x0: X - 0.45, x1: X + 0.45, z0: Z - 0.45, z1: Z + 0.45, h: 99 }); }
     if ('d123'.includes(c)) world.doors.push(buildDoor(world, x, z, c));
@@ -398,6 +400,18 @@ function addItem(world, type, X, Z, extra) {
     const glow = new THREE.Mesh(new THREE.RingGeometry(0.45, 0.55, 24), new THREE.MeshBasicMaterial({ color: 0x55aaff, transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false }));
     glow.rotation.x = -Math.PI / 2; glow.position.y = -0.5; g.add(glow);
     y = 0.6;
+  } else if (type === 'incin') {
+    const m = new THREE.MeshStandardMaterial({ color: 0x24282a, roughness: 0.45, metalness: 0.75 });
+    const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.34, 12), new THREE.MeshStandardMaterial({ color: 0x8a2a14, roughness: 0.5, metalness: 0.5 })); tank.rotation.z = Math.PI / 2; tank.position.y = -0.08; g.add(tank);
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.07, 0.07), m); g.add(body);
+    const noz = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.4, 8), m); noz.rotation.z = Math.PI / 2; noz.position.x = 0.4; g.add(noz);
+    const glow = new THREE.Mesh(new THREE.RingGeometry(0.45, 0.55, 24), new THREE.MeshBasicMaterial({ color: 0xff6a2a, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false }));
+    glow.rotation.x = -Math.PI / 2; glow.position.y = -0.5; g.add(glow);
+    y = 0.6;
+  } else if (type === 'fuel') {
+    const can = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.34, 0.14), new THREE.MeshStandardMaterial({ color: 0xa8221a, roughness: 0.55, metalness: 0.35, emissive: 0x2a0500 })); g.add(can);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.06, 8), new THREE.MeshStandardMaterial({ color: 0xd8b030, roughness: 0.4 })); cap.position.set(0.07, 0.2, 0); g.add(cap);
+    y = 0.17; bob = false;
   } else if (type === 'shotgun') {
     const m = new THREE.MeshStandardMaterial({ color: 0x24282a, roughness: 0.4, metalness: 0.8 });
     const b = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.9, 8), m); b.rotation.z = Math.PI / 2; g.add(b);

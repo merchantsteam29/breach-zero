@@ -31,7 +31,7 @@ const QUAL = {
 };
 
 // ---------- records + unlocks ----------
-const REC0 = { runs: 0, escapes: 0, deaths: 0, kills: 0, best: {}, nightmare: false, logs: [], survWave: 0, survKills: 0, bossKills: 0 };
+const REC0 = { runs: 0, escapes: 0, deaths: 0, kills: 0, best: {}, nightmare: false, logs: [], survWave: 0, survKills: 0, bossKills: 0, burns: 0 };
 const rec = { ...REC0, ...store.get('bz_records', {}) };
 const saveRec = () => store.set('bz_records', rec);
 const EXTRAS = [
@@ -131,7 +131,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyE') interact();
   if (e.code === 'KeyQ') P.useMedkit();
   if (e.code === 'KeyV') I.melee = true;
-  const n = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(e.code); if (n >= 0) P.switchTo(WEAPON_ORDER[n]);
+  const n = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'].indexOf(e.code); if (n >= 0) P.switchTo(WEAPON_ORDER[n]);
   if (e.code === 'KeyP' || (TEST && e.code === 'Escape')) pause();
 });
 addEventListener('keyup', (e) => { I.keys[e.code] = false; });
@@ -355,7 +355,7 @@ function startSurvival(diffKey) {
   G.diffKey = diffKey; G.diff = DIFFICULTY[diffKey];
   G.stats = newStats();
   const P = G.player; P.resetAll();
-  P.hasShotgun = true; P.hasSmg = true; P.medkits = 2;
+  P.hasShotgun = true; P.hasSmg = true; P.hasIncin = true; P.medkits = 2; P.ammo.incin.reserve = 150;
   P.ammo.pistol.reserve = 60; P.ammo.shotgun.reserve = 12; P.ammo.smg.reserve = 90;
   loadFloor(0, { arena: true });
   P.pos.set(G.world.start.x, 0, G.world.start.z);
@@ -414,7 +414,7 @@ function refreshTitle() {
 function fadeIn() { const f = $('fade'); f.style.transition = 'none'; f.style.opacity = 1; void f.offsetWidth; f.style.transition = 'opacity 1.4s'; f.style.opacity = 0; }
 function fadeOut(ms = 900) { const f = $('fade'); f.style.transition = `opacity ${ms}ms`; f.style.opacity = 1; return new Promise((r) => setTimeout(r, ms)); }
 
-G.onKill = (e) => { G.stats.kills++; rec.kills++; if (e.T.boss) rec.bossKills++; saveRec(); };
+G.onKill = (e) => { G.stats.kills++; rec.kills++; if (e.T.boss) rec.bossKills++; if (e.lastKind === 'fire') rec.burns = (rec.burns || 0) + 1; saveRec(); };
 G.onDeath = () => {
   A.stinger(); A.stopAlarm(); A.chaseMusic(false);
   rec.deaths++;
@@ -643,6 +643,8 @@ function pickup(it) {
     case 'smgammo': { const n = Math.round(30 * D.ammo); P.addAmmo('smg', n); A.pickup(); ui.flash(`+${n} SMG ROUNDS`, 1200); break; }
     case 'medkit': { if (P.medkits >= 3) return false; P.medkits++; A.pickup(); ui.flash('MEDKIT  [Q] TO USE', 1500); break; }
     case 'shotgun': { P.hasShotgun = true; A.pickup('weapon'); P.switchTo('shotgun'); ui.flash('SHOTGUN  [2]', 2200, '#f0b43a'); ambush(it); break; }
+    case 'incin': { P.hasIncin = true; P.addAmmo('incin', 100); A.pickup('weapon'); P.switchTo('incin'); ui.flash('INCINERATOR  [5]', 2200, '#ff7a2a'); ambush(it); break; }
+    case 'fuel': { if (!P.hasIncin) { const n = Math.round(12 * D.ammo); P.addAmmo('pistol', n); A.pickup(); ui.flash(`+${n} PISTOL AMMO`, 1200); break; } const n = Math.round(60 * D.ammo); P.addAmmo('incin', n); A.pickup(); ui.flash(`+${n} FUEL`, 1200); break; }
     case 'smg': { P.hasSmg = true; P.addAmmo('smg', 60); A.pickup('weapon'); P.switchTo('smg'); ui.flash('SMG  [3]', 2200, '#5ba8ff'); ambush(it); break; }
     default: return false;
   }
@@ -761,7 +763,7 @@ function updateFinale(dt) {
     const s = waveSpot(); if (!s) return;
     const brutes = alive.filter((e) => e.type === 'brute').length;
     const r = Math.random();
-    const type = r < 0.45 ? 'husk' : r < 0.8 ? 'crawler' : r < 0.93 || brutes ? 'spitter' : 'brute';
+    const type = r < 0.4 ? 'husk' : r < 0.72 ? 'crawler' : r < 0.82 && G.floor >= 2 ? 'burster' : r < 0.93 || brutes ? 'spitter' : 'brute';
     G.enemies.spawn(type, s.x + (Math.random() - 0.5), s.z + (Math.random() - 0.5), { alert: true, drop: true });
     F.total++;
   }
@@ -794,7 +796,7 @@ function updateSurvival(dt) {
     const s = waveSpot(); if (!s) return;
     const brutes = alive.filter((e) => e.type === 'brute').length, maxBrutes = S.wave >= 4 ? 1 + Math.floor(S.wave / 6) : 0;
     const r = Math.random();
-    const type = r < 0.42 ? 'husk' : r < 0.74 ? 'crawler' : r < 0.9 && S.wave >= 2 ? 'spitter' : brutes < maxBrutes ? 'brute' : 'husk';
+    const type = r < 0.38 ? 'husk' : r < 0.66 ? 'crawler' : r < 0.76 && S.wave >= 3 ? 'burster' : r < 0.9 && S.wave >= 2 ? 'spitter' : brutes < maxBrutes ? 'brute' : 'husk';
     G.enemies.spawn(type, s.x + (Math.random() - 0.5), s.z + (Math.random() - 0.5), { alert: true, drop: true });
     S.toSpawn--;
   }
@@ -847,11 +849,11 @@ function hud() {
   ui.set('hWeap', `${WEAPON_NAME[P.weapon]} <span class="slots">${slots}</span>`, 'innerHTML');
   ui.set('hMag', a ? String(a.mag) : '—'); ui.set('hRes', a ? String(a.reserve) : '∞');
   ui.cls($('hMag').parentElement, 'empty', !!a && a.mag === 0);
-  const low = { pistol: 3, smg: 8, shotgun: 1 }[P.weapon];
+  const low = { pistol: 3, smg: 8, shotgun: 1, incin: 20 }[P.weapon];
   ui.set('hRel', P.reloadT > 0 ? 'RELOADING' : a && a.mag === 0 && a.reserve === 0 ? 'NO AMMO · [4] CROWBAR' : a && a.mag <= low && a.reserve > 0 ? '[R] RELOAD' : P.flashDead ? 'LIGHT RECHARGING' : '');
   // crosshair spread
   const moving = Math.hypot(P.vel.x, P.vel.z);
-  const gap = ({ shotgun: 16, smg: 8, crowbar: 3 }[P.weapon] || 5) * (1 - P.ads * 0.6) + moving * 1.4 + P.kickV * 8 + (P.onGround ? 0 : 8);
+  const gap = ({ shotgun: 16, smg: 8, crowbar: 3, incin: 22 }[P.weapon] || 5) * (1 - P.ads * 0.6) + moving * 1.4 + P.kickV * 8 + (P.onGround ? 0 : 8);
   ui.style('cross', '--g', gap.toFixed(1) + 'px');
   ui.style('cross', 'opacity', P.sprinting || P.reloadT > 0 || !P.alive ? '0.25' : '1');
   // prompt

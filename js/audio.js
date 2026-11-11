@@ -177,6 +177,9 @@ export function liftArrive() {
   [392, 523, 659].forEach((f, i) => tone(d, t + i * 0.25, 1.2, { f, gain: 0.2 }));
   noise(d, t, 2.5, { f: 200, gain: 0.4, attack: 0.5, brown: true });
 }
+export function flame() { if (!ctx) return; const t = now(), d = out(null, 0.25); noise(d, t, 0.2, { type: 'bandpass', f: 900, f2: 1400, q: 0.6, gain: 0.32, attack: 0.02 }); noise(d, t, 0.18, { f: 260, gain: 0.25, brown: true }); }
+export function burst(pos) { if (!ctx) return; const t = now(), d = out(pos, 0.6); noise(d, t, 0.6, { f: 1800, f2: 120, gain: 1.2 }); noise(d, t, 0.35, { type: 'bandpass', f: 600, q: 1.2, gain: 0.8 }); tone(d, t, 0.4, { f: 90, f2: 35, gain: 0.8 }); }
+export function swell(pos) { if (!ctx) return; const t = now(), d = out(pos, 0.3); tone(d, t, 0.7, { type: 'sawtooth', f: 70, f2: 160, gain: 0.25 }); noise(d, t, 0.7, { type: 'bandpass', f: 400, f2: 1600, q: 2, gain: 0.35, attack: 0.2 }); }
 export function spit(pos) { if (!ctx) return; const t = now(), d = out(pos, 0.3); noise(d, t, 0.3, { type: 'bandpass', f: 700, f2: 1800, q: 1.5, gain: 0.7 }); }
 export function splat(pos) { if (!ctx) return; const t = now(), d = out(pos, 0.3); noise(d, t, 0.25, { f: 1500, f2: 200, gain: 0.6 }); }
 
@@ -205,6 +208,7 @@ const VOICES = {
   crawler: { idle: { f: 260, f2: 200, dur: 0.6, gain: 0.25, rough: 1.5, form: [1400, 2600] }, alert: { f: 900, f2: 1300, dur: 0.7, gain: 0.55, rough: 1.8, form: [1800, 3200] } },
   brute: { idle: { f: 55, f2: 42, dur: 2.2, gain: 0.6, rough: 0.7, form: [250, 500] }, alert: { f: 110, f2: 60, dur: 1.8, gain: 1.0, rough: 1.0, form: [350, 800] } },
   spitter: { idle: { f: 160, f2: 120, dur: 1.2, gain: 0.3, rough: 1.4, form: [700, 1500] }, alert: { f: 500, f2: 380, dur: 0.9, gain: 0.55, rough: 1.6, form: [1100, 2500] } },
+  burster: { idle: { f: 70, f2: 55, dur: 1.8, gain: 0.4, rough: 1.4, form: [300, 700] }, alert: { f: 210, f2: 140, dur: 1.2, gain: 0.7, rough: 1.7, form: [500, 1200] } },
   stalker: { idle: { f: 70, f2: 64, dur: 2.6, gain: 0.45, rough: 0.3, form: [300, 2600] }, alert: { f: 1200, f2: 240, dur: 2.2, gain: 0.85, rough: 2.2, form: [1600, 3600] } },
   host: { idle: { f: 40, f2: 30, dur: 3, gain: 0.8, rough: 0.9, form: [180, 420] }, alert: { f: 85, f2: 38, dur: 2.6, gain: 1.2, rough: 1.3, form: [260, 700, 1500] } },
 };

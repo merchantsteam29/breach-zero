@@ -11,10 +11,12 @@ const WEAPONS = {
   smg: { mag: 30, dmg: 15, head: 2.0, pellets: 1, spread: 0.034, ads: 0.012, rate: 0.075, hold: 0, reload: 1.7, kick: 0.016, noise: 15 },
   // melee: quiet, no ammo, staggers most things
   crowbar: { melee: true, dmg: 48, head: 1, rate: 0.62, reach: 2.4, noise: 2 },
+  // a stream of fire: short range, a wide cone, sets things alight; "mag" is the fuel tank
+  incin: { stream: true, mag: 100, rate: 0.05, dmg: 6.5, range: 7.5, cone: 0.26, reload: 1.9, kick: 0.003, noise: 9 },
 };
-export const WEAPON_ORDER = ['pistol', 'shotgun', 'smg', 'crowbar'];
-export const WEAPON_NAME = { pistol: 'PISTOL', shotgun: 'SHOTGUN', smg: 'SMG', crowbar: 'CROWBAR' };
-const MAX_RESERVE = { pistol: 120, shotgun: 48, smg: 240 };
+export const WEAPON_ORDER = ['pistol', 'shotgun', 'smg', 'crowbar', 'incin'];
+export const WEAPON_NAME = { pistol: 'PISTOL', shotgun: 'SHOTGUN', smg: 'SMG', crowbar: 'CROWBAR', incin: 'INCINERATOR' };
+const MAX_RESERVE = { pistol: 120, shotgun: 48, smg: 240, incin: 300 };
 
 export class Player {
   constructor(G) {
@@ -27,21 +29,22 @@ export class Player {
 
   resetAll() {
     this.hp = 100; this.medkits = 1; this.stamina = 100; this.battery = 100;
-    this.ammo = { pistol: { mag: 12, reserve: 36 }, shotgun: { mag: 6, reserve: 6 }, smg: { mag: 30, reserve: 0 } };
-    this.hasShotgun = false; this.hasSmg = false; this.weapon = 'pistol';
+    this.ammo = { pistol: { mag: 12, reserve: 36 }, shotgun: { mag: 6, reserve: 6 }, smg: { mag: 30, reserve: 0 }, incin: { mag: 100, reserve: 0 } };
+    this.hasShotgun = false; this.hasSmg = false; this.hasIncin = false; this.weapon = 'pistol';
     this.spawn();
   }
 
   // the parts of the player that carry over between floors
-  save() { return { hp: this.hp, medkits: this.medkits, ammo: JSON.parse(JSON.stringify(this.ammo)), hasShotgun: this.hasShotgun, hasSmg: this.hasSmg, weapon: this.weapon }; }
+  save() { return { hp: this.hp, medkits: this.medkits, ammo: JSON.parse(JSON.stringify(this.ammo)), hasShotgun: this.hasShotgun, hasSmg: this.hasSmg, hasIncin: this.hasIncin, weapon: this.weapon }; }
   load(s) {
     Object.assign(this, JSON.parse(JSON.stringify(s)));
     // saves from before the SMG existed
     this.ammo.smg ||= { mag: 30, reserve: 0 }; this.hasSmg = !!this.hasSmg;
+    this.ammo.incin ||= { mag: 100, reserve: 0 }; this.hasIncin = !!this.hasIncin;
     if (!this.owns(this.weapon)) this.weapon = 'pistol';
     this.spawn();
   }
-  owns(w) { return w === 'pistol' || w === 'crowbar' || (w === 'shotgun' && this.hasShotgun) || (w === 'smg' && this.hasSmg); }
+  owns(w) { return w === 'pistol' || w === 'crowbar' || (w === 'shotgun' && this.hasShotgun) || (w === 'smg' && this.hasSmg) || (w === 'incin' && this.hasIncin); }
   addAmmo(w, n) { const a = this.ammo[w]; a.reserve = Math.min(MAX_RESERVE[w], a.reserve + n); }
   // next / previous owned weapon (mouse wheel, pad Y)
   cycle(dir = 1) {
@@ -153,14 +156,29 @@ export class Player {
     fist(cb, 0, 0, 0); fist(cb, 0, 0.05, -0.02);
     limb(cb, [0.01, -0.03, 0.03], [0.09, -0.24, 0.28], 0.034, 0.045, sleeve);
     cb.userData.tip = new THREE.Vector3(0, 0.44, -0.27);
-    this.guns = { pistol: p, shotgun: s, smg: m, crowbar: cb };
+    // incinerator (origin = the grip)
+    const ic = new THREE.Group(); this.vmRoot.add(ic); this.incin = ic;
+    const tankMat = new THREE.MeshStandardMaterial({ color: 0x8a2a14, roughness: 0.5, metalness: 0.5, envMapIntensity: 0.12 });
+    const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.24, 14), tankMat); tank.rotation.x = Math.PI / 2; tank.position.set(0, -0.06, 0.02); ic.add(tank);
+    ic.add(box(0.04, 0.05, 0.3, metal, 0, 0.02, -0.08));
+    cyl(0.016, 0.34, dark, 0, 0.03, -0.38, ic);
+    cyl(0.024, 0.05, metal, 0, 0.03, -0.56, ic);
+    const igrip = box(0.03, 0.09, 0.04, dark, 0, -0.04, 0.05); igrip.rotation.x = 0.25; ic.add(igrip);
+    ic.add(box(0.026, 0.06, 0.03, dark, 0, -0.02, -0.22));
+    fist(ic, 0.004, -0.05, 0.055); fist(ic, -0.004, -0.04, -0.22);
+    limb(ic, [0.01, -0.08, 0.075], [0.08, -0.26, 0.3], 0.034, 0.045, sleeve);
+    limb(ic, [-0.01, -0.06, -0.21], [-0.17, -0.28, 0.04], 0.032, 0.044, sleeve);
+    this.pilot = new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 6), new THREE.MeshBasicMaterial({ color: 0x66aaff })); this.pilot.position.set(0, 0.03, -0.59); ic.add(this.pilot);
+    this.tank = tank;
+    ic.userData.tip = new THREE.Vector3(0, 0.03, -0.6);
+    this.guns = { pistol: p, shotgun: s, smg: m, crowbar: cb, incin: ic };
     // fewer draw calls: fold the static parts of each gun together (the slide, mags and pump still move)
-    mergeChildren(slide); mergeChildren(p, new Set([this.pistolMag])); mergeChildren(s); mergeChildren(m, new Set([this.smgMag])); mergeChildren(cb);
+    mergeChildren(slide); mergeChildren(p, new Set([this.pistolMag])); mergeChildren(s); mergeChildren(m, new Set([this.smgMag])); mergeChildren(cb); mergeChildren(ic, new Set([this.pilot, this.tank]));
     this.gunMats = [metal, dark]; // (golden guns unlock recolours these)
     // muzzle flash sprite
     this.flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: flashTex(), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0 }));
     this.flash.scale.setScalar(0.16); S.add(this.flash);
-    this.shotgun.visible = false; this.smg.visible = false; this.crowbar.visible = false;
+    this.shotgun.visible = false; this.smg.visible = false; this.crowbar.visible = false; this.incin.visible = false;
     // lights for the viewmodel scene
     S.add(new THREE.HemisphereLight(0x9aa6b4, 0x1a1612, 1.8));
     this.vmLight = new THREE.PointLight(0xfff1dc, 0, 4, 2); this.vmLight.position.set(0.45, 0.35, -0.1); S.add(this.vmLight);
@@ -175,6 +193,7 @@ export class Player {
     const G = this.G, w = this.W, a = this.ammo[this.weapon];
     if (!this.alive || this.switchT > 0 || this.healT > 0 || this.fireCd > 0) return;
     if (w.melee) { this.swing(w.dmg, true); return; }
+    if (w.stream) { this.flame(); return; }
     if (this.reloadT > 0) {
       if (this.weapon === 'shotgun' && a.mag > 0) { this.reloadT = 0; this.shellLoad = false; } else return;
     }
@@ -219,6 +238,41 @@ export class Player {
     if (this.weapon !== 'shotgun') { G.fx.casing(eye.clone().addScaledVector(right, 0.25).addScaledVector(up, -0.1).addScaledVector(base, 0.4), right, false); if (this.weapon === 'pistol' || Math.random() < 0.3) A.brass(); }
     else { this.pumpT = 0.55; setTimeout(() => this.alive && A.pump(), 330); }
     if (a.mag === 0 && a.reserve > 0) setTimeout(() => this.reloadT <= 0 && this.ammo[this.weapon].mag === 0 && this.reload(), 350);
+  }
+
+  // one tick of the incinerator: a cone of fire in front of you; everything in it takes damage and catches
+  flame() {
+    const G = this.G, w = this.W, a = this.ammo.incin;
+    if (this.reloadT > 0) return;
+    if (a.mag <= 0) { if (!this.dryT || this.dryT < 0) { A.empty(); this.dryT = 0.4; if (a.reserve > 0) this.reload(); } return; }
+    a.mag--; this.fireCd = w.rate; this.sprinting = false; this.flameT = 0.12;
+    if ((this.flameSnd = (this.flameSnd || 0) - 1) <= 0) { A.flame(); this.flameSnd = 3; }
+    const cam = G.camera, eye = cam.position, f = this.fwd;
+    // the flames themselves, from the nozzle forward
+    const tip = this.gun.userData.tip.clone(); this.gun.localToWorld(tip);
+    const origin = eye.clone().addScaledVector(f, 0.7).add(new THREE.Vector3(0.12, -0.12, 0).applyEuler(cam.rotation));
+    const wall = G.world.raycast(eye, f, w.range);
+    const reach = Math.min(w.range, wall.dist);
+    G.fx.emit(G.fx.glow, origin, 6, { col: [1, 0.45 + Math.random() * 0.2, 0.08], speed: Math.max(3, reach * 1.6), spread: 0.22, dir: f, life: 0.45, grav: -2.5 });
+    G.fx.emit(G.fx.glow, origin, 2, { col: [1, 0.85, 0.4], speed: Math.max(2.5, reach * 1.2), spread: 0.12, dir: f, life: 0.3, grav: -1.5 });
+    if (wall.point && wall.dist < w.range && Math.random() < 0.3) G.fx.emit(G.fx.glow, wall.point, 3, { col: [1, 0.4, 0.05], speed: 1.5, spread: 1, dir: wall.normal, life: 0.5, grav: -2 });
+    // anything in the cone, in reach and in sight
+    for (const e of G.enemies.list) {
+      if (e.state === 'dead' || e.state === 'dormant' || e.decoy || e.gone) continue;
+      const dx = e.pos.x - eye.x, dz = e.pos.z - eye.z, d = Math.hypot(dx, dz);
+      if (d > reach + e.T.r || d < 1e-3) continue;
+      if ((dx * f.x + dz * f.z) / (d * (Math.hypot(f.x, f.z) || 1)) < Math.cos(w.cone)) continue;
+      if (!G.world.los(eye.x, eye.z, e.pos.x, e.pos.z)) continue;
+      const dir = new THREE.Vector3(dx / d, 0, dz / d);
+      e.burnT = Math.max(e.burnT || 0, 3.2);
+      const killed = G.enemies.damage(e, w.dmg * (1.15 - d / w.range * 0.4), dir, false, false, 'fire');
+      if (killed) G.ui.hitmarker(true, false);
+      else if (Math.random() < 0.15) G.ui.hitmarker(false, false);
+    }
+    this.kickV = Math.max(this.kickV, 0.25); this.trauma = Math.min(0.3, this.trauma + 0.01);
+    this.muzzleT = 0.05;
+    G.enemies.noise(w.noise);
+    if (a.mag === 0 && a.reserve > 0) setTimeout(() => this.reloadT <= 0 && this.ammo.incin.mag === 0 && this.reload(), 300);
   }
 
   // crowbar swing, or a quick bash with whatever is in your hands (V / RB)
@@ -391,13 +445,15 @@ export class Player {
 
     // timers
     this.fireCd -= dt; this.switchT = Math.max(0, this.switchT - dt); this.holdT = (this.holdT || 0) + dt;
+    this.dryT = (this.dryT || 0) - dt; this.flameT = Math.max(0, (this.flameT || 0) - dt);
     if (this.muzzleT > 0) this.muzzleT -= dt;
     const mz2 = this.muzzleT > 0 ? 1 : 0;
     // the fill light doubles as the muzzle flash: orange, brighter and a little ahead while firing
     const F = this.fill;
-    if (mz2) { F.color.setHex(0xffb060); F.intensity = (this.weapon === 'shotgun' ? 70 : 40) * (S.reduceFlash ? 0.3 : 1); F.distance = 14; F.position.copy(cam.position).addScaledVector(this.fwd, 0.8); }
+    if (this.flameT > 0) { F.color.setHex(0xff7a2a); F.intensity = (22 + Math.random() * 10) * (S.reduceFlash ? 0.5 : 1); F.distance = 11; F.position.copy(cam.position).addScaledVector(this.fwd, 2.2); }
+    else if (mz2) { F.color.setHex(0xffb060); F.intensity = (this.weapon === 'shotgun' ? 70 : 40) * (S.reduceFlash ? 0.3 : 1); F.distance = 14; F.position.copy(cam.position).addScaledVector(this.fwd, 0.8); }
     else { F.color.setHex(0xffe8d0); F.intensity = this.fillBase; F.distance = 6; F.position.copy(cam.position); }
-    this.vmMuzzle.intensity = mz2 * 1.5;
+    this.vmMuzzle.intensity = this.weapon === 'incin' ? (this.flameT > 0 ? 0.35 : 0) : mz2 * 1.5;
     if ((I.lmb || I.lmbEdge) && G.state === 'play') this.tryFire(I.lmbEdge); I.lmbEdge = false;
     if (I.melee && G.state === 'play') { if (this.weapon === 'crowbar') this.tryFire(true); else this.swing(30, false); } I.melee = false;
     if (this.swingT > 0) this.swingT -= dt;
@@ -423,7 +479,7 @@ export class Player {
 
   animateViewmodel(dt, hs, bobAmt, I) {
     const g = this.gun, t = performance.now() / 1000;
-    const POSE = { pistol: [0.13, -0.135, -0.36, 0, -0.055, -0.3], shotgun: [0.14, -0.15, -0.34, 0, -0.06, -0.26], smg: [0.13, -0.15, -0.3, 0, -0.072, -0.24], crowbar: [0.24, -0.27, -0.4, 0.24, -0.27, -0.4] }[this.weapon];
+    const POSE = { pistol: [0.13, -0.135, -0.36, 0, -0.055, -0.3], shotgun: [0.14, -0.15, -0.34, 0, -0.06, -0.26], smg: [0.13, -0.15, -0.3, 0, -0.072, -0.24], crowbar: [0.24, -0.27, -0.4, 0.24, -0.27, -0.4], incin: [0.15, -0.16, -0.32, 0.06, -0.1, -0.28] }[this.weapon];
     const base = new THREE.Vector3(POSE[0], POSE[1], POSE[2]), adsPos = new THREE.Vector3(POSE[3], POSE[4], POSE[5]);
     const p = base.lerp(adsPos, this.ads);
     // sway with mouse
@@ -447,8 +503,10 @@ export class Player {
       const out = Math.sin(Math.min(1, r * 1.6) * Math.PI);
       if (this.weapon === 'pistol') { rz += s * 0.6; rx += s * 0.25; p.y -= s * 0.04; this.pistolMag.position.y = -0.105 - out * 0.12; }
       else if (this.weapon === 'smg') { rz += s * 0.45; rx += s * 0.3; p.y -= s * 0.05; this.smgMag.position.y = -0.08 - out * 0.16; }
+      else if (this.weapon === 'incin') { rz += s * 0.5; rx += s * 0.2; p.y -= s * 0.06; this.tank.position.y = -0.06 - out * 0.14; }
       else { rz -= 0.35; rx += 0.15; p.y -= 0.03; this.pump.position.z = 0; }
-    } else { this.pistolMag.position.y = -0.105; this.smgMag.position.y = -0.08; }
+    } else { this.pistolMag.position.y = -0.105; this.smgMag.position.y = -0.08; this.tank.position.y = -0.06; }
+    if (this.weapon === 'incin') { p.x += (Math.random() - 0.5) * 0.004 * (this.flameT > 0 ? 1 : 0); this.pilot.material.color.setHex(this.ammo.incin.mag > 0 ? (Math.random() < 0.2 ? 0x99ccff : 0x5599ff) : 0x111111); }
     // crowbar: wind up over the shoulder, then a hard diagonal swing; a bash shoves the gun forward
     if (this.weapon === 'crowbar') {
       // resting: tipped forward and leaning out to the right so it does not cover the view
@@ -469,8 +527,10 @@ export class Player {
     // muzzle flash sprite at the barrel tip
     const tip = g.userData.tip.clone(); g.localToWorld(tip);
     this.flash.position.copy(tip);
-    this.flash.material.opacity = this.muzzleT > 0 ? 1 : 0;
+    const flaming = this.weapon === 'incin' && this.flameT > 0;
+    this.flash.material.opacity = flaming ? 0.75 + Math.random() * 0.25 : this.muzzleT > 0 && this.weapon !== 'incin' ? 1 : 0;
+    this.flash.material.color.setHex(flaming ? 0xff8a3a : 0xffffff);
     this.flash.material.rotation = Math.random() * 6;
-    this.flash.scale.setScalar((this.weapon === 'shotgun' ? 0.28 : this.weapon === 'smg' ? 0.13 : 0.17) * (0.8 + Math.random() * 0.4));
+    this.flash.scale.setScalar((this.weapon === 'shotgun' ? 0.28 : this.weapon === 'smg' ? 0.13 : this.weapon === 'incin' ? 0.34 : 0.17) * (0.8 + Math.random() * 0.4));
   }
 }

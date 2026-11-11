@@ -1,5 +1,15 @@
 [
   {
+    "version": "2.1",
+    "date": "2026-11-11",
+    "title": "The incinerator and the Burster",
+    "notes": [
+      "New weapon: the INCINERATOR [5]. Hold the trigger for a cone of fire that sets things alight. Find it on Sublevel 3; fuel cans refill it. You start Survival with it.",
+      "New enemy: the BURSTER, a swollen husk that waddles up and bursts in acid. Shoot it early, or pop it next to its friends: the blast hurts them too. From Sublevel 3, and in Survival from wave 3.",
+      "Achievements: unlock them as you play (a 🏆 pops up), and see them all on the Game Library's new Profile page."
+    ]
+  },
+  {
     "version": "2.0",
     "date": "2026-11-09",
     "title": "Five floors down",
