@@ -70,6 +70,7 @@
         <button id="bRecords">Records</button>
         <button id="bExtras">Extras <small id="extrasInfo"></small></button>
         <button id="bSettings">Settings</button>
+        <button id="syncBtn">☁ Sync <small>keep your progress on all your devices</small></button>
         <button id="bControls">Controls</button>
         <button id="bInstall" hidden>Install as an app <small>play from your desktop or home screen, even offline</small></button>
         <button id="pcDownload">Download for PC <small>the Game Library app for Windows: every game in one place</small></button>
@@ -216,6 +217,16 @@
 <div class="clicktoplay" id="clickPlay" hidden>Click to continue</div>
 <div class="loading" id="loading">ESTABLISHING LINK…</div>
 
+<script src="sync.js"></script>
+<script>
+// progress sync between devices (sync.js): progress and best scores, never settings
+(function () {
+  if (!window.GameSync) return;
+  var idle = function () { var t = document.getElementById("sTitle"); return !!t && t.getClientRects().length > 0 && getComputedStyle(t).visibility !== 'hidden'; };
+  GameSync.init({ game: "breachzero", keys: [{ match: 'bz_records' }, { match: 'bz_save' }], idle: idle });
+  document.addEventListener('click', function (e) { if (e.target.closest && e.target.closest('#syncBtn')) { e.stopPropagation(); GameSync.open(); } }, true);
+})();
+</script>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>
